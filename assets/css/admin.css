@@ -1,0 +1,1906 @@
+/* Modern Admin Dashboard Styling */
+.sba-dashboard-wrap {
+    max-width: 1100px;
+    margin-top: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+}
+
+/* ==========================================================================
+   Universal Button, Icon & Text Middle-Alignment Engine
+   ========================================================================== */
+
+/* Maintain reliable visibility control for elements hidden dynamically */
+.sba-dashboard-wrap [style*="display: none"],
+.sba-dashboard-wrap [style*="display:none"],
+.sba-dashboard-wrap .sba-is-hidden {
+    display: none !important;
+}
+
+/* Reset all buttons across the dashboard and dialogs to flex middle-alignment */
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-primary,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-secondary,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-hero,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-small,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-large,
+body.wp-admin .sba-dashboard-wrap button.button,
+body.wp-admin .sba-dashboard-wrap a.button,
+.sba-dashboard-wrap .button,
+.sba-dashboard-wrap button.button,
+.sba-dashboard-wrap a.button,
+.sba-modal-dialog .button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: middle !important;
+    line-height: 1 !important;
+    box-sizing: border-box !important;
+    text-decoration: none !important;
+}
+
+/* Ensure inner text spans and labels stay vertically centered without inherited line-height overflow */
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button > span,
+body.wp-admin .sba-dashboard-wrap button.button > span,
+body.wp-admin .sba-dashboard-wrap a.button > span,
+.sba-dashboard-wrap .button > span,
+.sba-dashboard-wrap .sba-btn-label,
+.sba-dashboard-wrap .sba-full-backup-zip-label,
+.sba-dashboard-wrap .sba-main-tab-label,
+.sba-modal-dialog .button > span {
+    display: inline-flex !important;
+    align-items: center !important;
+    vertical-align: middle !important;
+    line-height: 1 !important;
+}
+
+/* Universal Dashicon middle-alignment inside any button, tab, badge or modal */
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button .dashicons,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-primary .dashicons,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-secondary .dashicons,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-hero .dashicons,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-small .dashicons,
+body.wp-admin .sba-dashboard-wrap button .dashicons,
+body.wp-admin .sba-dashboard-wrap a.button .dashicons,
+.sba-dashboard-wrap .button .dashicons,
+.sba-dashboard-wrap .sba-tab-btn .dashicons,
+.sba-dashboard-wrap .sba-main-tab-btn .dashicons,
+.sba-modal-dialog .dashicons {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: middle !important;
+    line-height: 1 !important;
+    height: 1em !important;
+    width: 1em !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+    align-self: center !important;
+}
+
+/* Ensure Dashicon :before pseudo-element is centered inside the icon box */
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button .dashicons:before,
+body.wp-admin .sba-dashboard-wrap button .dashicons:before,
+body.wp-admin .sba-dashboard-wrap a.button .dashicons:before,
+.sba-dashboard-wrap .sba-tab-btn .dashicons:before,
+.sba-dashboard-wrap .sba-main-tab-btn .dashicons:before,
+.sba-modal-dialog .dashicons:before {
+    display: inline-block !important;
+    vertical-align: middle !important;
+    line-height: 1 !important;
+    width: 1em !important;
+    height: 1em !important;
+    text-align: center !important;
+}
+
+/* Header */
+.sba-header {
+    background: #ffffff;
+    padding: 24px 28px;
+    border-radius: 10px;
+    border: 1px solid #dcdcde;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.sba-header h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    color: #1d2327;
+}
+.sba-subtitle {
+    margin: 6px 0 0 0;
+    color: #646970;
+    font-size: 14px;
+}
+
+/* Main 3-Tab Horizontal Navigation */
+.sba-main-nav {
+    display: flex;
+    gap: 8px;
+    margin: 20px 0 24px 0;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 0;
+}
+.sba-main-tab-btn,
+body.wp-admin .sba-dashboard-wrap button.sba-main-tab-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 12px 20px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-bottom: -2px;
+}
+.sba-main-tab-btn:hover {
+    color: #0f172a;
+    background: #f8fafc;
+    border-radius: 6px 6px 0 0;
+}
+.sba-main-tab-btn.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+    background: #ffffff;
+    border-radius: 6px 6px 0 0;
+}
+.sba-main-tab-btn .dashicons {
+    font-size: 18px !important;
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+}
+
+/* Tab Panes */
+.sba-tab-pane {
+    display: none;
+}
+.sba-tab-pane.active {
+    display: block;
+}
+
+/* Scoped Notice Banners */
+.sba-tab-notice-container {
+    margin-bottom: 20px;
+}
+.sba-dashboard-wrap .notice {
+    position: relative;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.sba-dashboard-wrap .notice p {
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0.5em 0;
+}
+
+/* Tab Toolbar */
+.sba-tab-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #ffffff;
+    padding: 18px 24px;
+    border-radius: 10px;
+    border: 1px solid #dcdcde;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+.sba-tab-toolbar-text h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1d2327;
+}
+.sba-tab-toolbar-text .description {
+    margin: 4px 0 0 0;
+    color: #64748b;
+}
+
+/* Scan Trigger Buttons */
+.sba-btn-scan,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-scan,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.button-hero.sba-btn-scan {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    padding: 0 22px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-scan .dashicons,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-hero.sba-btn-scan .dashicons {
+    font-size: 19px !important;
+    width: 19px !important;
+    height: 19px !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+}
+.sba-rotating,
+.sba-btn-scan.is-scanning .dashicons,
+.sba-btn-scan.is-loading .dashicons {
+    animation: sba-spin 1s linear infinite;
+    transform-origin: center center;
+}
+@keyframes sba-spin {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Top Safety Banner */
+.sba-safety-card {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    flex-wrap: wrap;
+}
+.sba-safety-card-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    max-width: 680px;
+}
+.sba-safety-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: #dcfce7;
+    color: #15803d;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0;
+}
+.sba-safety-card-icon .dashicons {
+    font-size: 24px !important;
+    width: 24px !important;
+    height: 24px !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+}
+.sba-safety-card-text h3 {
+    margin: 0 0 6px 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #14532d;
+}
+.sba-safety-card-text p {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #166534;
+}
+.sba-safety-hint {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px;
+    font-size: 12px;
+    color: #15803d;
+    font-weight: 500;
+    line-height: 1 !important;
+}
+.sba-safety-hint .dashicons {
+    font-size: 15px !important;
+    width: 15px !important;
+    height: 15px !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+}
+.sba-btn-export-zip,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap a.sba-btn-export-zip,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap a.button-hero.sba-btn-export-zip {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    background: #15803d !important;
+    border: 1px solid #15803d !important;
+    color: #ffffff !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    padding: 0 20px !important;
+    border-radius: 6px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    text-shadow: none !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-btn-export-zip:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap a.sba-btn-export-zip:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap a.button-hero.sba-btn-export-zip:hover {
+    background: #166534 !important;
+    border-color: #166534 !important;
+    color: #ffffff !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-export-zip .dashicons,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button-hero.sba-btn-export-zip .dashicons {
+    font-size: 18px !important;
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+}
+
+/* KPI Cards Grid */
+.sba-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.sba-card {
+    background: #ffffff;
+    border: 1px solid #dcdcde;
+    border-radius: 8px;
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.sba-card:hover {
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+}
+.sba-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0;
+}
+.sba-card-icon .dashicons {
+    font-size: 26px !important;
+    width: 26px !important;
+    height: 26px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+}
+.sba-card-content {
+    flex: 1;
+    min-width: 0;
+}
+.sba-icon-autoload          { background: #e0f2fe; color: #0284c7; }
+.sba-icon-revisions         { background: #fef3c7; color: #d97706; }
+.sba-icon-transients        { background: #ede9fe; color: #7c3aed; }
+.sba-icon-tables            { background: #dcfce7; color: #16a34a; }
+.sba-icon-media-size        { background: #e0f2fe; color: #0284c7; }
+.sba-icon-media-unused      { background: #fef3c7; color: #d97706; }
+.sba-icon-media-oversized   { background: #ffedd5; color: #ea580c; }
+.sba-icon-media-savings     { background: #dcfce7; color: #16a34a; }
+.sba-icon-plugins-total     { background: #e0e7ff; color: #4338ca; }
+.sba-icon-plugins-active    { background: #dcfce7; color: #15803d; }
+.sba-icon-plugins-unverified{ background: #fee2e2; color: #b91c1c; }
+
+.sba-card-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #646970;
+    letter-spacing: 0.5px;
+}
+.sba-card-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 2px;
+}
+.sba-kpi-btn-action,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-kpi-btn-action,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-kpi-btn-action {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    padding: 0 8px !important;
+    min-height: 24px !important;
+    height: 24px !important;
+    line-height: 1 !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    border-radius: 4px !important;
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #475569 !important;
+    cursor: pointer;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-kpi-btn-action:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-kpi-btn-action:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-kpi-btn-action:hover {
+    background: #eff6ff !important;
+    border-color: #3b82f6 !important;
+    color: #1d4ed8 !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-kpi-btn-action .dashicons {
+    font-size: 13px !important;
+    width: 13px !important;
+    height: 13px !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+}
+.sba-kpi-btn-action.is-loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+.sba-card-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1d2327;
+    margin: 3px 0 2px;
+}
+.sba-card-meta {
+    font-size: 12px;
+    color: #8c8f94;
+}
+.sba-stat-revisions-clickable {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    font-size: 22px;
+    font-weight: 700;
+    color: #d97706;
+    border-bottom: 2px dashed #f59e0b;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    line-height: 1.2;
+    transition: all 0.15s ease;
+}
+.sba-stat-revisions-clickable:hover,
+.sba-stat-revisions-clickable:focus {
+    color: #b45309;
+    border-bottom-color: #b45309;
+    outline: none;
+}
+.sba-rev-click-hint {
+    font-size: 11px;
+    font-weight: 500;
+    color: #b45309;
+}
+.sba-rev-storage-meta {
+    font-size: 11.5px;
+    color: #475569;
+    margin-top: 5px;
+}
+.sba-rev-release-meta {
+    font-size: 11.5px;
+    color: #16a34a;
+    margin-top: 3px;
+}
+
+/* Section Panel */
+.sba-section-panel {
+    background: #ffffff;
+    border: 1px solid #dcdcde;
+    border-radius: 10px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.sba-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.sba-panel-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1d2327;
+}
+.sba-panel-header .description {
+    margin: 4px 0 0 0;
+}
+.sba-search-box input {
+    min-width: 240px;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+/* Tabs Navigation within Section */
+.sba-tabs-nav {
+    display: flex;
+    gap: 8px;
+    border-bottom: 2px solid #f0f0f1;
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+.sba-tab-btn,
+body.wp-admin .sba-dashboard-wrap button.sba-tab-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    color: #50575e;
+    min-height: 32px !important;
+    height: 32px !important;
+    padding: 0 12px !important;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1 !important;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-sizing: border-box !important;
+}
+.sba-tab-btn:hover {
+    background: #f0f0f1;
+    color: #1d2327;
+}
+.sba-tab-btn.active {
+    background: #2271b1;
+    border-color: #2271b1;
+    color: #ffffff;
+}
+.sba-tab-btn-warning.active {
+    background: #d63638;
+    border-color: #d63638;
+    color: #ffffff;
+}
+.sba-tab-btn-inactive.active {
+    background: #ea580c;
+    border-color: #ea580c;
+    color: #ffffff;
+}
+.sba-tab-btn .dashicons {
+    font-size: 16px !important;
+    width: 16px !important;
+    height: 16px !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+}
+.sba-tab-count {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 18px !important;
+    height: 18px !important;
+    padding: 0 6px !important;
+    border-radius: 9px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    box-sizing: border-box !important;
+}
+.sba-badge-gray   { background: #e0e0e0; color: #3c434a; }
+.sba-badge-blue   { background: #dbeafe; color: #1e40af; }
+.sba-badge-green  { background: #dcfce7; color: #15803d; }
+.sba-badge-red    { background: #fee2e2; color: #b91c1c; }
+.sba-badge-orange { background: #ffedd5; color: #c2410c; }
+.sba-badge-yellow { background: #fef9c3; color: #854d0e; }
+
+.sba-tab-btn.active .sba-tab-count {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
+/* Callout Banner */
+.sba-callout {
+    display: flex;
+    gap: 14px;
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+    border-left: 4px solid;
+}
+.sba-callout-warning {
+    background: #fffbeb;
+    border-left-color: #d97706;
+    color: #78350f;
+}
+.sba-callout-icon .dashicons {
+    font-size: 24px;
+    color: #d97706;
+}
+.sba-callout-body strong {
+    font-size: 14px;
+    display: block;
+    margin-bottom: 4px;
+}
+.sba-callout-body p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* Data Table */
+.sba-data-table {
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.sba-data-table th {
+    font-weight: 600;
+    background: #f8fafc;
+    color: #475569;
+    padding: 12px 14px;
+}
+.sba-data-table td {
+    padding: 12px 14px;
+    vertical-align: middle;
+}
+.sba-table-name {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+}
+.sba-plugin-name {
+    color: #0f172a;
+    font-size: 13px;
+    font-weight: 600;
+}
+.sba-plugin-version {
+    font-size: 11px;
+    color: #64748b;
+    font-weight: 500;
+    margin-left: 4px;
+}
+.sba-badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.sba-badge-pill .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+.sba-pill-core       { background: #eff6ff; color: #1d4ed8; }
+.sba-pill-active     { background: #f0fdf4; color: #15803d; }
+.sba-pill-orphaned   { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.sba-pill-inactive   { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.sba-pill-warning    { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.sba-pill-verified   { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; text-transform: none; }
+.sba-pill-unverified { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; text-transform: none; }
+.sba-pill-self       { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; text-transform: none; }
+
+/* Risk Level Badges */
+.sba-risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.sba-risk-badge .dashicons {
+    font-size: 13px;
+    width: 13px;
+    height: 13px;
+    line-height: 1;
+}
+.sba-risk-low        { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.sba-risk-medium     { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+.sba-risk-high       { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+.sba-risk-dependency { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+.sba-risk-self       { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+.sba-icon-plugins-size  { background: #eff6ff; color: #2563eb; }
+.sba-icon-plugins-risks { background: #fef2f2; color: #dc2626; }
+
+.sba-btn-manage-plugin,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-manage-plugin,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap a.sba-btn-manage-plugin {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    min-height: 26px !important;
+    height: 26px !important;
+    padding: 0 8px !important;
+    line-height: 1 !important;
+    color: #475569 !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    background: #f8fafc !important;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-btn-manage-plugin:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-manage-plugin:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap a.sba-btn-manage-plugin:hover {
+    color: #0f172a !important;
+    border-color: #94a3b8 !important;
+    background: #f1f5f9 !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-manage-plugin .dashicons {
+    font-size: 13px !important;
+    width: 13px !important;
+    height: 13px !important;
+    line-height: 1 !important;
+}
+
+.sba-table-source {
+    display: block;
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 2px;
+}
+.sba-table-subtext {
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 12px;
+    color: #475569;
+}
+.sba-belongs-to {
+    color: #334155;
+    font-size: 12px;
+}
+.sba-belongs-to strong {
+    color: #0f172a;
+    font-weight: 600;
+}
+.sba-plugin-state-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+.sba-plugin-state-badge .dashicons {
+    font-size: 12px;
+    width: 12px;
+    height: 12px;
+}
+.sba-state-inactive-deleted {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+.sba-state-active {
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+/* Action Button */
+.sba-drop-btn,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-drop-btn,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-drop-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    color: #d63638 !important;
+    border: 1px solid #fca5a5 !important;
+    background: #fff5f5 !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    padding: 0 10px !important;
+    line-height: 1 !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-drop-btn:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-drop-btn:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-drop-btn:hover {
+    background: #d63638 !important;
+    color: #ffffff !important;
+    border-color: #d63638 !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-drop-btn .dashicons {
+    font-size: 14px !important;
+    width: 14px !important;
+    height: 14px !important;
+    line-height: 1 !important;
+}
+
+.sba-empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #64748b;
+}
+.sba-empty-state .dashicons {
+    font-size: 40px;
+    width: 40px;
+    height: 40px;
+    color: #10b981;
+    margin-bottom: 8px;
+}
+.sba-empty-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #334155;
+    margin: 0;
+}
+
+/* Modal Dialog */
+.sba-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(2px);
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.sba-modal-dialog {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    max-width: 540px;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+}
+.sba-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 24px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.sba-modal-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.sba-modal-icon-danger {
+    color: #dc2626;
+    font-size: 22px;
+    width: 22px;
+    height: 22px;
+}
+.sba-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0;
+}
+.sba-modal-close:hover {
+    color: #334155;
+}
+.sba-modal-body {
+    padding: 20px 24px;
+}
+.sba-table-drop-preview {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 14px 0 16px 0;
+}
+.sba-table-drop-preview code {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    background: none;
+    padding: 0;
+}
+.sba-table-drop-meta {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
+}
+.sba-table-drop-plugin {
+    font-size: 12px;
+    color: #334155;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #cbd5e1;
+}
+.sba-modal-safety-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid #0284c7;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-top: 14px;
+    color: #334155;
+    font-size: 13px;
+    line-height: 1.45;
+}
+.sba-modal-safety-notice .dashicons {
+    color: #0284c7;
+    font-size: 20px;
+    width: auto;
+    height: auto;
+    flex-shrink: 0;
+    margin: 0;
+    line-height: 1;
+}
+.sba-modal-success-box {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    color: #166534;
+    font-size: 13px;
+}
+.sba-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 24px;
+    background: #f8fafc;
+    border-top: 1px solid #f1f5f9;
+}
+.sba-modal-cancel,
+body.wp-admin.wp-core-ui .sba-modal-dialog .button.sba-modal-cancel {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 36px !important;
+    height: 36px !important;
+    padding: 0 16px !important;
+    line-height: 1 !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+}
+.sba-modal-btn-backup,
+body.wp-admin.wp-core-ui .sba-modal-dialog .button.sba-modal-btn-backup {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    background: #f1f5f9 !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #334155 !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    min-height: 36px !important;
+    height: 36px !important;
+    padding: 0 16px !important;
+    line-height: 1 !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+}
+.sba-modal-btn-backup:hover,
+body.wp-admin.wp-core-ui .sba-modal-dialog .button.sba-modal-btn-backup:hover {
+    background: #e2e8f0 !important;
+    border-color: #94a3b8 !important;
+    color: #0f172a !important;
+}
+body.wp-admin.wp-core-ui .sba-modal-dialog .sba-modal-btn-backup .dashicons {
+    font-size: 16px !important;
+    width: 16px !important;
+    height: 16px !important;
+    line-height: 1 !important;
+}
+.sba-modal-btn-drop,
+body.wp-admin.wp-core-ui .sba-modal-dialog .button.sba-modal-btn-drop {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    background: #dc2626 !important;
+    color: #ffffff !important;
+    border: 1px solid #b91c1c !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    min-height: 36px !important;
+    height: 36px !important;
+    padding: 0 16px !important;
+    line-height: 1 !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+}
+.sba-modal-btn-drop:hover,
+body.wp-admin.wp-core-ui .sba-modal-dialog .button.sba-modal-btn-drop:hover {
+    background: #b91c1c !important;
+    color: #ffffff !important;
+}
+body.wp-admin.wp-core-ui .sba-modal-dialog .sba-modal-btn-drop .dashicons {
+    font-size: 16px !important;
+    width: 16px !important;
+    height: 16px !important;
+    line-height: 1 !important;
+}
+
+/* Post Revisions Modal (Site Bloat Auditor) */
+.sba-modal-dialog-large {
+    max-width: 860px !important;
+    width: 95% !important;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+.sba-revisions-modal-body {
+    max-height: calc(90vh - 130px);
+    overflow-y: auto;
+    padding: 20px 24px;
+}
+.sba-revisions-summary-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.sba-rev-summary-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.sba-rev-summary-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #64748b;
+    letter-spacing: 0.5px;
+}
+.sba-rev-summary-val {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+}
+.sba-rev-summary-val.sba-text-storage {
+    color: #d97706;
+}
+.sba-rev-summary-val.sba-text-release {
+    color: #16a34a;
+}
+.sba-rev-summary-divider {
+    width: 1px;
+    height: 36px;
+    background: #cbd5e1;
+}
+.sba-revisions-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.sba-rev-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.sba-select-all-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+}
+.sba-revisions-table-wrap {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.sba-revisions-table {
+    margin: 0 !important;
+    border: none !important;
+}
+.sba-revisions-table th {
+    background: #f8fafc !important;
+    font-size: 11px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    font-weight: 700;
+    padding: 10px 12px !important;
+}
+.sba-revisions-table td {
+    vertical-align: middle !important;
+    padding: 12px !important;
+}
+.sba-badge-posttype {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    background: #e2e8f0;
+    color: #475569;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    line-height: 1.2;
+}
+.sba-btn-danger-outline {
+    border-color: #ef4444 !important;
+    color: #b91c1c !important;
+}
+.sba-btn-danger-outline:hover:not(:disabled) {
+    background: #fee2e2 !important;
+    border-color: #dc2626 !important;
+    color: #991b1b !important;
+}
+.sba-modal-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px 20px;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 500;
+}
+.sba-modal-loading .dashicons {
+    font-size: 22px;
+    width: 22px;
+    height: 22px;
+}
+
+/* Media Library Styles */
+.sba-media-thumb {
+    width: 50px;
+    height: 50px;
+    border-radius: 6px;
+    object-fit: cover;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: block;
+    margin: 0 auto;
+}
+.sba-media-thumb-placeholder {
+    width: 50px;
+    height: 50px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+    margin: 0 auto;
+}
+.sba-media-thumb-placeholder .dashicons {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+}
+.sba-subsize-badge {
+    display: inline-block;
+    font-size: 11px;
+    color: #475569;
+    background: #f1f5f9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+    font-weight: 500;
+}
+.sba-clean-state {
+    padding: 40px 20px;
+    text-align: center;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    margin: 16px 0;
+}
+.sba-clean-state .dashicons {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: #16a34a;
+    margin-bottom: 12px;
+}
+.sba-clean-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #14532d;
+    margin: 0 0 6px;
+}
+.sba-clean-desc {
+    font-size: 13px;
+    color: #166534;
+    margin: 0;
+}
+.sba-btn-quarantine-item,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-quarantine-item,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-quarantine-item {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    background: #fff7ed !important;
+    border: 1px solid #fed7aa !important;
+    color: #c2410c !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    padding: 0 10px !important;
+    line-height: 1 !important;
+    border-radius: 4px !important;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-btn-quarantine-item:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-quarantine-item:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-quarantine-item:hover {
+    background: #ffedd5 !important;
+    border-color: #fdba74 !important;
+    color: #9a3412 !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-quarantine-item .dashicons {
+    font-size: 14px !important;
+    width: 14px !important;
+    height: 14px !important;
+    line-height: 1 !important;
+}
+
+.sba-btn-restore-item,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-restore-item,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-restore-item {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: #f0fdf4 !important;
+    border: 1px solid #bbf7d0 !important;
+    color: #15803d !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    line-height: 1 !important;
+    min-height: 32px !important;
+    height: 32px !important;
+    padding: 0 12px !important;
+    border-radius: 4px !important;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-btn-restore-item[style*="display: none"],
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-restore-item[style*="display: none"],
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-restore-item[style*="display: none"] {
+    display: none !important;
+}
+.sba-btn-restore-item:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-restore-item:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-restore-item:hover {
+    background: #dcfce7 !important;
+    border-color: #86efac !important;
+    color: #166534 !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-restore-item .dashicons {
+    font-size: 15px !important;
+    width: 15px !important;
+    height: 15px !important;
+    line-height: 1 !important;
+}
+
+.sba-btn-danger,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-danger,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-danger {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    min-height: 32px !important;
+    height: 32px !important;
+    padding: 0 14px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    border-radius: 4px !important;
+    background: #dc2626 !important;
+    border: 1px solid #b91c1c !important;
+    color: #ffffff !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-btn-danger:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-danger:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-danger:hover {
+    background: #b91c1c !important;
+    border-color: #991b1b !important;
+    color: #ffffff !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-danger .dashicons {
+    font-size: 15px !important;
+    width: 15px !important;
+    height: 15px !important;
+    line-height: 1 !important;
+}
+
+/* Quarantine Checkbox, Row Selection & Actions */
+.sba-quarantine-cb-col {
+    width: 38px !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    padding: 10px 4px !important;
+}
+.sba-quarantine-cb-col input[type="checkbox"] {
+    margin: 0 !important;
+    cursor: pointer;
+    vertical-align: middle;
+}
+.sba-data-table tbody tr.sba-row-selected {
+    background-color: #fef2f2 !important;
+}
+
+.sba-btn-delete-single-quarantine,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-delete-single-quarantine,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-delete-single-quarantine {
+    color: #dc2626 !important;
+    border: 1px solid #fca5a5 !important;
+    background: #ffffff !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    padding: 0 10px !important;
+    line-height: 1 !important;
+    border-radius: 4px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-btn-delete-single-quarantine:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-delete-single-quarantine:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-delete-single-quarantine:hover {
+    background: #fee2e2 !important;
+    border-color: #ef4444 !important;
+    color: #991b1b !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-delete-single-quarantine .dashicons {
+    font-size: 14px !important;
+    width: 14px !important;
+    height: 14px !important;
+    line-height: 1 !important;
+}
+
+.sba-btn-edit-wp,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-edit-wp,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap a.sba-btn-edit-wp,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-edit-wp {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    min-height: 26px !important;
+    height: 26px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    color: #475569 !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    background: #f8fafc !important;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-btn-edit-wp:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-edit-wp:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap a.sba-btn-edit-wp:hover {
+    color: #0f172a !important;
+    border-color: #94a3b8 !important;
+    background: #f1f5f9 !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-edit-wp .dashicons {
+    font-size: 13px !important;
+    width: 13px !important;
+    height: 13px !important;
+    line-height: 1 !important;
+}
+
+#sba-btn-empty-all-quarantine,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.button-link-delete {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: middle !important;
+    line-height: 1 !important;
+    min-height: 32px !important;
+    height: 32px !important;
+    padding: 0 8px !important;
+}
+
+/* Media Dimension, Usage & Savings Analysis Styles */
+.sba-dim-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 5px;
+}
+.sba-dim-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+.sba-dim-oversized {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+.sba-dim-oversized .dashicons {
+    font-size: 12px;
+    width: 12px;
+    height: 12px;
+    line-height: 1;
+}
+.sba-dim-arrow {
+    color: #94a3b8;
+    font-weight: 700;
+    font-size: 12px;
+}
+.sba-dim-recommended {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+.sba-dim-ok {
+    background: #f8fafc;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+.sba-dim-ok .dashicons {
+    font-size: 12px;
+    width: 12px;
+    height: 12px;
+    color: #16a34a;
+    line-height: 1;
+}
+.sba-usage-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.sba-usage-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+    max-width: 100%;
+    word-break: break-word;
+}
+.sba-usage-tag .dashicons {
+    font-size: 13px;
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.sba-usage-tag-featured {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+.sba-usage-tag-content {
+    background: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+}
+.sba-usage-tag-product {
+    background: #ede9fe;
+    color: #5b21b6;
+    border: 1px solid #ddd6fe;
+}
+.sba-usage-tag-theme {
+    background: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+}
+.sba-usage-tag-unused {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    font-weight: 600;
+}
+.sba-usage-tag-quarantined {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+    font-weight: 600;
+}
+.sba-usage-more {
+    font-size: 11px;
+    color: #64748b;
+    font-style: italic;
+    margin-top: 2px;
+}
+.sba-savings-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+.sba-savings-reclaimable {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+
+/* Generated Thumbnail Sub-sizes Accordion & Responsive Badges */
+.sba-subsize-wrapper {
+    margin-top: 6px;
+}
+.sba-subsize-toggle-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #334155 !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    padding: 0 8px !important;
+    min-height: 24px !important;
+    height: 24px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    line-height: 1 !important;
+    box-sizing: border-box !important;
+}
+.sba-subsize-toggle-btn:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border-color: #94a3b8 !important;
+}
+.sba-subsize-toggle-btn .dashicons-images-alt {
+    font-size: 13px !important;
+    width: 13px !important;
+    height: 13px !important;
+    line-height: 1 !important;
+}
+.sba-subsize-toggle-arrow {
+    font-size: 13px !important;
+    width: 13px !important;
+    height: 13px !important;
+    line-height: 1 !important;
+    transition: transform 0.2s ease;
+}
+.sba-subsize-toggle-btn.is-active .sba-subsize-toggle-arrow {
+    transform: rotate(180deg);
+}
+
+.sba-subsizes-accordion-row {
+    background: #f8fafc !important;
+}
+.sba-subsizes-accordion-cell {
+    padding: 0 !important;
+}
+.sba-subsizes-panel {
+    background: #ffffff;
+    margin: 6px 12px 14px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+.sba-subsizes-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.sba-subsizes-panel-title {
+    font-size: 12px;
+    color: #0f172a;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.sba-subsizes-panel-title .dashicons {
+    color: #2563eb;
+    font-size: 15px;
+    width: 15px;
+    height: 15px;
+}
+.sba-subsizes-panel-desc {
+    font-size: 11px;
+    color: #64748b;
+}
+.sba-subsizes-table-wrap {
+    overflow-x: auto;
+}
+.sba-subsizes-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.sba-subsizes-table th {
+    background: #f1f5f9;
+    padding: 7px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #475569;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.sba-subsizes-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+.sba-subsizes-table tr:last-child td {
+    border-bottom: none;
+}
+.sba-subsizes-table tr:hover {
+    background: #f8fafc;
+}
+.sba-subsize-code {
+    font-family: monospace;
+    font-weight: 600;
+    color: #0f172a;
+    background: #f1f5f9;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+/* Badges */
+.sba-badge-subsize {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+.sba-badge-subsize .dashicons {
+    font-size: 13px;
+    width: 13px;
+    height: 13px;
+    line-height: 1;
+}
+.sba-badge-responsive {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+.sba-badge-redundant {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+
+/* Action Buttons */
+.sba-btn-delete-subsize,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-delete-subsize,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-delete-subsize {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    color: #dc2626 !important;
+    border: 1px solid #fca5a5 !important;
+    background: #fef2f2 !important;
+    font-weight: 600 !important;
+    font-size: 11px !important;
+    min-height: 24px !important;
+    height: 24px !important;
+    padding: 0 8px !important;
+    line-height: 1 !important;
+    border-radius: 4px !important;
+    transition: all 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+.sba-btn-delete-subsize:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-delete-subsize:hover,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-delete-subsize:hover {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+    border-color: #dc2626 !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-delete-subsize .dashicons {
+    font-size: 12px !important;
+    width: 12px !important;
+    height: 12px !important;
+    line-height: 1 !important;
+}
+.sba-btn-subsize-disabled,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .button.sba-btn-subsize-disabled,
+body.wp-admin.wp-core-ui .sba-dashboard-wrap button.sba-btn-subsize-disabled {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    opacity: 0.55 !important;
+    cursor: not-allowed !important;
+    font-size: 11px !important;
+    min-height: 24px !important;
+    height: 24px !important;
+    padding: 0 8px !important;
+    line-height: 1 !important;
+    border-radius: 4px !important;
+    box-sizing: border-box !important;
+}
+body.wp-admin.wp-core-ui .sba-dashboard-wrap .sba-btn-subsize-disabled .dashicons {
+    font-size: 12px !important;
+    width: 12px !important;
+    height: 12px !important;
+    line-height: 1 !important;
+}
+
+/* Media Cards Clickable & File Path Styles */
+.sba-card-clickable {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.sba-card-clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    border-color: #cbd5e1;
+}
+.sba-media-file-path {
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    color: #64748b;
+    margin-top: 3px;
+    margin-bottom: 3px;
+    word-break: break-all;
+}
+.sba-media-file-path code {
+    background: #f1f5f9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+
+/* Phase 1 Media Audit Expansion Styles */
+.sba-badge-blue {
+    background-color: #e0f2fe;
+    color: #0369a1;
+}
+.sba-callout-info {
+    background: #f0f9ff;
+    border-left: 4px solid #0284c7;
+    color: #0369a1;
+    padding: 14px 18px;
+    border-radius: 6px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.sba-callout-info .sba-callout-icon {
+    font-size: 20px;
+    color: #0284c7;
+}
+.sba-duplicate-group-header td {
+    background: #f8fafc !important;
+    border-top: 2px solid #cbd5e1 !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+.sba-btn-optimize-item {
+    background: #2563eb !important;
+    border-color: #1d4ed8 !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+}
+.sba-btn-optimize-item:hover,
+.sba-btn-optimize-item:focus {
+    background: #1d4ed8 !important;
+    border-color: #1e40af !important;
+    color: #ffffff !important;
+}
+.sba-btn-rollback-item {
+    background: #f1f5f9 !important;
+    border-color: #cbd5e1 !important;
+    color: #334155 !important;
+    font-weight: 600 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+}
+.sba-btn-rollback-item:hover,
+.sba-btn-rollback-item:focus {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+.sba-card-revisions {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.sba-card-revisions:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    border-color: #f59e0b;
+}
