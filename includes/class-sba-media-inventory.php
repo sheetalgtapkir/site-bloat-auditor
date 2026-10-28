@@ -52,21 +52,30 @@ class SBA_Media_Inventory {
         $upload_dir_info = wp_get_upload_dir();
         $basedir         = wp_normalize_path( $upload_dir_info['basedir'] );
 
-        $defaults = [
-            'post_type'      => 'attachment',
-            'post_status'    => [ 'inherit', 'publish', 'private' ],
-            'posts_per_page' => -1,
-            'orderby'        => 'ID',
-            'order'          => 'DESC',
-        ];
-
-        $query_args = wp_parse_args( $args, $defaults );
-        $posts      = get_posts( $query_args );
-
+        $batch_size      = isset( $args['batch_size'] ) ? max( 50, absint( $args['batch_size'] ) ) : 250;
+        $max_limit       = isset( $args['posts_per_page'] ) && $args['posts_per_page'] > 0 ? (int) $args['posts_per_page'] : 0;
+        $paged           = 1;
         $quarantined_map = (array) get_option( 'sba_quarantined_files', [] );
         $inventory       = [];
 
-        foreach ( $posts as $att ) {
+        do {
+            $chunk_args = [
+                'post_type'              => 'attachment',
+                'post_status'            => [ 'inherit', 'publish', 'private' ],
+                'posts_per_page'         => $batch_size,
+                'paged'                  => $paged,
+                'orderby'                => 'ID',
+                'order'                  => 'DESC',
+                'no_found_rows'          => true,
+                'update_post_term_cache' => false,
+            ];
+
+            $posts = get_posts( $chunk_args );
+            if ( empty( $posts ) ) {
+                break;
+            }
+
+            foreach ( $posts as $att ) {
             $att_id = (int) $att->ID;
 
             $file_path = get_attached_file( $att_id );
@@ -92,7 +101,7 @@ class SBA_Media_Inventory {
             $norm_path       = $file_path ? wp_normalize_path( $file_path ) : '';
 
             if ( $file_path && file_exists( $file_path ) ) {
-                if ( is_readable( $file_path ) ) {
+                if ( function_exists( 'sba_is_readable' ) ? sba_is_readable( $file_path ) : @is_readable( $file_path ) ) {
                     $original_status = 'exists';
                     $file_size       = (int) @filesize( $file_path );
                     $mod_time        = (int) @filemtime( $file_path );
@@ -215,6 +224,21 @@ class SBA_Media_Inventory {
             $inventory[] = $item;
         }
 
+            // Memory hygiene: clean cache of processed posts in this batch
+            if ( function_exists( 'clean_post_cache' ) ) {
+                foreach ( $posts as $att ) {
+                    clean_post_cache( $att->ID );
+                }
+            }
+
+            // Stop if batch was partially filled or max limit reached
+            if ( count( $posts ) < $batch_size || ( $max_limit > 0 && count( $inventory ) >= $max_limit ) ) {
+                break;
+            }
+
+            $paged++;
+        } while ( true );
+
         return $inventory;
     }
 
@@ -228,7 +252,8 @@ class SBA_Media_Inventory {
         $upload_dir_info = wp_get_upload_dir();
         $basedir         = wp_normalize_path( $upload_dir_info['basedir'] );
 
-        if ( ! is_dir( $basedir ) || ! is_readable( $basedir ) ) {
+        $is_readable = function_exists( 'sba_is_readable' ) ? sba_is_readable( $basedir ) : @is_readable( $basedir );
+        if ( ! is_dir( $basedir ) || ! $is_readable ) {
             return [];
         }
 

@@ -1147,22 +1147,37 @@
                         var safeSubFile = sbaEscapeHtml(sub.file);
                         var safeSubDim = sbaEscapeHtml(sub.dimensions || 'N/A');
                         var safeSubBytes = sbaEscapeHtml(sub.file_size_formatted || '0 B');
-                        var isResponsiveProtected = (sub.status === 'protected_responsive');
-
                         var statusBadgeHtml = '';
                         var actionBtnHtml = '';
 
-                        if (isResponsiveProtected) {
-                            statusBadgeHtml = '<span class="sba-badge-subsize sba-badge-responsive" title="' + sba__( 'Used by mobile/tablet responsive srcset', 'Used by mobile/tablet responsive srcset' ) + '">' +
-                                '<span class="dashicons dashicons-smartphone"></span> ' + sba__( 'Responsive Size (Keeps mobile load fast)', 'Responsive Size (Keeps mobile load fast)' ) +
+                        if (sub.status === 'protected_responsive') {
+                            statusBadgeHtml = '<span class="sba-badge-subsize sba-badge-responsive" title="' + sbaEscapeHtml(sub.note || '') + '">' +
+                                '<span class="dashicons dashicons-smartphone"></span> ' + sba__( 'Responsive Size (Protected)', 'Responsive Size (Protected)' ) +
                             '</span>';
 
-                            actionBtnHtml = '<button type="button" class="button button-small sba-btn-subsize-disabled" disabled title="' + sba__( 'Required for responsive mobile devices.', 'Required for responsive mobile devices.' ) + '">' +
-                                '<span class="dashicons dashicons-lock"></span> <span>' + sba__( 'Delete Size', 'Delete Size' ) + '</span>' +
+                            actionBtnHtml = '<button type="button" class="button button-small sba-btn-subsize-disabled" disabled title="' + sba__( 'Protected: Required for mobile and tablet responsive srcset.', 'Protected: Required for mobile and tablet responsive srcset.' ) + '">' +
+                                '<span class="dashicons dashicons-lock"></span> <span>' + sba__( 'Protected', 'Protected' ) + '</span>' +
+                            '</button>';
+                        } else if (sub.status === 'core_standard_size') {
+                            statusBadgeHtml = '<span class="sba-badge-subsize sba-badge-blue" title="' + sbaEscapeHtml(sub.note || '') + '">' +
+                                '<span class="dashicons dashicons-admin-settings"></span> ' + sba__( 'Standard Core Size', 'Standard Core Size' ) +
+                            '</span>';
+
+                            actionBtnHtml = '<button type="button" class="button button-small sba-btn-delete-subsize" data-att-id="' + safeId + '" data-size-key="' + safeSubKey + '" data-file="' + safeSubFile + '">' +
+                                '<span class="dashicons dashicons-trash"></span> <span>' + sba__( 'Delete Size', 'Delete Size' ) + '</span>' +
+                            '</button>';
+                        } else if (sub.status === 'unverified_template_usage') {
+                            statusBadgeHtml = '<span class="sba-badge-subsize sba-badge-warning" title="' + sbaEscapeHtml(sub.note || '') + '">' +
+                                '<span class="dashicons dashicons-visibility"></span> ' + sba__( 'Theme Size (Unverified Template Usage)', 'Theme Size (Unverified Template Usage)' ) +
+                            '</span>';
+
+                            actionBtnHtml = '<button type="button" class="button button-small sba-btn-delete-subsize" data-att-id="' + safeId + '" data-size-key="' + safeSubKey + '" data-file="' + safeSubFile + '">' +
+                                '<span class="dashicons dashicons-trash"></span> <span>' + sba__( 'Delete Size', 'Delete Size' ) + '</span>' +
                             '</button>';
                         } else {
+                            // potential_unused or unreferenced
                             statusBadgeHtml = '<span class="sba-badge-subsize sba-badge-redundant" title="' + sbaEscapeHtml(sub.note || '') + '">' +
-                                '<span class="dashicons dashicons-warning"></span> ' + sba__( 'Redundant Thumbnail Size', 'Redundant Thumbnail Size' ) +
+                                '<span class="dashicons dashicons-warning"></span> ' + sba__( 'Unregistered / Legacy Size', 'Unregistered / Legacy Size' ) +
                             '</span>';
 
                             actionBtnHtml = '<button type="button" class="button button-small sba-btn-delete-subsize" data-att-id="' + safeId + '" data-size-key="' + safeSubKey + '" data-file="' + safeSubFile + '">' +
@@ -1483,15 +1498,19 @@
                     reclaimableSpaceMb = d.reclaimable_space_mb || 0;
                     potentialSavingsMb = d.potential_savings_mb || 0;
 
-                    // Update 4 Summary KPI Cards
+                    // Update 5 Strictly Separated Summary Storage Metric Cards (Priority 2)
+                    var potReclaimableMb      = d.potentially_reclaimable_mb !== undefined ? parseFloat(d.potentially_reclaimable_mb) : reclaimableSpaceMb;
+                    var estSavingsMb          = d.estimated_optimization_savings_mb !== undefined ? parseFloat(d.estimated_optimization_savings_mb) : potentialSavingsMb;
+                    var backupStorageMb       = d.backup_storage_consumed_mb !== undefined ? parseFloat(d.backup_storage_consumed_mb) : parseFloat(d.quarantined_size_mb || 0);
+                    var physicallyReclaimedMb = d.actual_reclaimed_mb !== undefined ? parseFloat(d.actual_reclaimed_mb) : 0;
+
                     $('#sba-stat-media-size').text(totalMediaSizeMb.toFixed(2) + ' MB');
                     $('#sba-stat-media-unused').text(formatNumber(unusedMedia.length));
                     $('#sba-stat-media-oversized').text(formatNumber(oversizedMedia.length));
-                    $('#sba-stat-media-savings').text((reclaimableSpaceMb + potentialSavingsMb).toFixed(2) + ' MB');
-                    $('#sba-stat-media-savings-meta').text(
-                        unusedMedia.length + ' ' + sba__( 'unused', 'unused' ) + ' + ' +
-                        oversizedMedia.length + ' ' + sba__( 'resize opps', 'resize opps' )
-                    );
+                    $('#sba-stat-media-reclaimable, #sba-stat-media-savings').text(potReclaimableMb.toFixed(2) + ' MB');
+                    $('#sba-stat-media-opt-savings').text(estSavingsMb.toFixed(2) + ' MB');
+                    $('#sba-stat-media-backup-storage').text(backupStorageMb.toFixed(2) + ' MB');
+                    $('#sba-stat-media-reclaimed').text(physicallyReclaimedMb.toFixed(2) + ' MB');
 
                     duplicatesData = d.duplicates || [];
                     accessibilityData = d.accessibility || null;
@@ -1574,7 +1593,7 @@
                     }
 
                     $('#sba-stat-media-unused').text(formatNumber(unusedMedia.length));
-                    $('#sba-stat-media-savings').text((reclaimableSpaceMb + potentialSavingsMb).toFixed(2) + ' MB');
+                    $('#sba-stat-media-reclaimable, #sba-stat-media-savings').text(reclaimableSpaceMb.toFixed(2) + ' MB');
                     $('#sba-media-count-all').text(formatNumber(allMedia.length));
                     $('#sba-media-count-unused').text(formatNumber(unusedMedia.length));
                     $('#sba-media-count-quarantined').text(formatNumber(quarantinedMedia.length));
@@ -1911,7 +1930,7 @@
             var sizeKey = $btn.data('size-key');
             var fileName = $btn.data('file');
 
-            if (!confirm(sba__( 'Are you sure you want to delete this thumbnail variation? The physical file will be removed and WordPress metadata will be updated to prevent 404 broken srcset references.', 'Are you sure you want to delete this thumbnail variation? The physical file will be removed and WordPress metadata will be updated to prevent 404 broken srcset references.' ))) {
+            if (!confirm(sba__( 'Are you sure you want to permanently delete this thumbnail variation? The physical file will be removed from disk and metadata will be updated. (Note: thumbnails can be regenerated from the original file if needed later).', 'Are you sure you want to permanently delete this thumbnail variation? The physical file will be removed from disk and metadata will be updated. (Note: thumbnails can be regenerated from the original file if needed later).' ))) {
                 return;
             }
 
@@ -2295,9 +2314,12 @@
                         '<a href="' + editUrl + '" target="_blank" class="button button-small sba-btn-edit-wp"><span class="dashicons dashicons-edit"></span> Edit in WP</a>' +
                     '</div>';
 
+                    var keeperTag = item.is_keeper ?
+                        '<span class="sba-badge-sub" style="background: #e0f2fe; color: #0369a1; margin-left: 6px; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600;"><span class="dashicons dashicons-star-filled" style="font-size: 11px; width: 11px; height: 11px; line-height: 1; vertical-align: text-top;"></span> Primary Copy</span>' : '';
+
                     var itemRowHtml = '<tr>' +
                         '<td style="text-align: center;">' + previewHtml + '</td>' +
-                        '<td><strong class="sba-table-name">' + safeName + '</strong>' + pathHtml + '</td>' +
+                        '<td><strong class="sba-table-name">' + safeName + '</strong>' + keeperTag + pathHtml + '</td>' +
                         '<td>' + usageHtml + '</td>' +
                         '<td><strong>' + safeSize + '</strong></td>' +
                         '<td style="text-align: right;">' + actionHtml + '</td>' +

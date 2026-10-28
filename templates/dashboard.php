@@ -269,7 +269,7 @@ $sba_initial_rev_release_fmt = size_format( $sba_initial_rev_releasable, 2 ) . '
             </div>
         </div>
 
-        <!-- 4 Summary Metric Cards -->
+        <!-- 5 Strictly Separated Summary Storage Metrics (Priority 2) -->
         <div class="sba-cards-grid" style="margin-top: 20px;">
             <div class="sba-card sba-card-clickable" id="sba-card-media-total" title="<?php esc_attr_e( 'Click to view all media attachments', 'site-bloat-auditor' ); ?>">
                 <div class="sba-card-icon sba-icon-media-size">
@@ -277,10 +277,10 @@ $sba_initial_rev_release_fmt = size_format( $sba_initial_rev_releasable, 2 ) . '
                 </div>
                 <div class="sba-card-content">
                     <div class="sba-card-header-row">
-                        <span class="sba-card-title"><?php esc_html_e( 'Total Media Size', 'site-bloat-auditor' ); ?></span>
+                        <span class="sba-card-title"><?php esc_html_e( 'Measured Storage', 'site-bloat-auditor' ); ?></span>
                     </div>
                     <div class="sba-card-value" id="sba-stat-media-size">0.00 MB</div>
-                    <div class="sba-card-meta"><?php esc_html_e( 'wp-content/uploads directory', 'site-bloat-auditor' ); ?></div>
+                    <div class="sba-card-meta"><?php esc_html_e( 'Actual files on disk in uploads', 'site-bloat-auditor' ); ?></div>
                 </div>
             </div>
 
@@ -290,10 +290,10 @@ $sba_initial_rev_release_fmt = size_format( $sba_initial_rev_releasable, 2 ) . '
                 </div>
                 <div class="sba-card-content">
                     <div class="sba-card-header-row">
-                        <span class="sba-card-title"><?php esc_html_e( 'Unreferenced Media', 'site-bloat-auditor' ); ?></span>
+                        <span class="sba-card-title"><?php esc_html_e( 'Potentially Reclaimable', 'site-bloat-auditor' ); ?></span>
                     </div>
-                    <div class="sba-card-value" id="sba-stat-media-unused">0</div>
-                    <div class="sba-card-meta"><?php esc_html_e( 'No references found in scanned sources', 'site-bloat-auditor' ); ?></div>
+                    <div class="sba-card-value" id="sba-stat-media-reclaimable">0.00 MB</div>
+                    <div class="sba-card-meta" id="sba-stat-media-reclaimable-meta"><?php esc_html_e( 'Unreferenced & duplicate candidates', 'site-bloat-auditor' ); ?></div>
                 </div>
             </div>
 
@@ -303,23 +303,36 @@ $sba_initial_rev_release_fmt = size_format( $sba_initial_rev_releasable, 2 ) . '
                 </div>
                 <div class="sba-card-content">
                     <div class="sba-card-header-row">
-                        <span class="sba-card-title"><?php esc_html_e( 'Oversized Images', 'site-bloat-auditor' ); ?></span>
+                        <span class="sba-card-title"><?php esc_html_e( 'Optimization Savings', 'site-bloat-auditor' ); ?></span>
                     </div>
-                    <div class="sba-card-value" id="sba-stat-media-oversized">0</div>
-                    <div class="sba-card-meta"><?php esc_html_e( 'Optimization opportunities', 'site-bloat-auditor' ); ?></div>
+                    <div class="sba-card-value" id="sba-stat-media-opt-savings">0.00 MB</div>
+                    <div class="sba-card-meta" id="sba-stat-media-opt-meta"><?php esc_html_e( 'Estimated image resize/WebP savings', 'site-bloat-auditor' ); ?></div>
                 </div>
             </div>
 
-            <div class="sba-card" id="sba-card-media-savings">
+            <div class="sba-card" id="sba-card-media-backup-storage" title="<?php esc_attr_e( 'Storage occupied by safety backups and quarantined files', 'site-bloat-auditor' ); ?>">
+                <div class="sba-card-icon" style="background: #fef3c7; color: #d97706;">
+                    <span class="dashicons dashicons-shield-alt"></span>
+                </div>
+                <div class="sba-card-content">
+                    <div class="sba-card-header-row">
+                        <span class="sba-card-title"><?php esc_html_e( 'Backup Storage', 'site-bloat-auditor' ); ?></span>
+                    </div>
+                    <div class="sba-card-value" id="sba-stat-media-backup-storage">0.00 MB</div>
+                    <div class="sba-card-meta" id="sba-stat-media-backup-meta"><?php esc_html_e( 'Quarantine & .sba-orig backups', 'site-bloat-auditor' ); ?></div>
+                </div>
+            </div>
+
+            <div class="sba-card" id="sba-card-media-savings" title="<?php esc_attr_e( 'Verified bytes physically deleted from disk', 'site-bloat-auditor' ); ?>">
                 <div class="sba-card-icon sba-icon-media-savings">
                     <span class="dashicons dashicons-trash"></span>
                 </div>
                 <div class="sba-card-content">
                     <div class="sba-card-header-row">
-                        <span class="sba-card-title"><?php esc_html_e( 'Potentially Reclaimable', 'site-bloat-auditor' ); ?></span>
+                        <span class="sba-card-title"><?php esc_html_e( 'Physically Reclaimed', 'site-bloat-auditor' ); ?></span>
                     </div>
-                    <div class="sba-card-value" id="sba-stat-media-savings">0.00 MB</div>
-                    <div class="sba-card-meta" id="sba-stat-media-savings-meta"><?php esc_html_e( 'Unreferenced + resize potential', 'site-bloat-auditor' ); ?></div>
+                    <div class="sba-card-value" id="sba-stat-media-reclaimed">0.00 MB</div>
+                    <div class="sba-card-meta" id="sba-stat-media-reclaimed-meta"><?php esc_html_e( 'Confirmed deleted from disk', 'site-bloat-auditor' ); ?></div>
                 </div>
             </div>
         </div>

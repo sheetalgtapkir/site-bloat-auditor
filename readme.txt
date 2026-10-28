@@ -4,7 +4,7 @@ Tags: database cleanup, media audit, storage optimizer, orphaned tables, bloat c
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -85,6 +85,15 @@ No. Site Bloat Auditor contains zero telemetry, zero analytics, and zero externa
 5. **Plugin Storage & Authenticity Audit**: Linked file and database footprints, official WordPress.org repository verification, and missing dependency detection.
 
 == Changelog ==
+
+= 1.1.0 =
+* Media Optimization Engine: Added recoverable image optimization with verified backups (.sba-orig), image decode verification, and atomic rollback.
+* Duplicate Media Detection: File-size pre-filtering before hashing, unreferenced duplicate candidate classification, and keeper copy protection.
+* Strict Storage Accounting: Separated measured media storage, potentially reclaimable storage, estimated optimization savings, backup storage consumed, and verified reclaimed space.
+* Physical Path Deduplication: Normalized physical file path deduplication to prevent double-counting shared files across unreferenced and duplicate lists.
+* Post Revisions Analysis: Detailed storage usage breakdown (bytes and KB) with interactive modal for individual post revision review and selective deletion.
+* Accessibility Audit: Comprehensive alt text auditing differentiating empty decorative attributes from missing or repetitive descriptions.
+* Windows PHP Compatibility: Resilient cross-platform stream readability checks resolving Windows ACL false-negatives.
 
 = 1.0.0 =
 * Initial public release on WordPress.org.

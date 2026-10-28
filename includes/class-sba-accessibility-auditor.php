@@ -78,7 +78,13 @@ class SBA_Accessibility_Auditor {
             }
 
             // 2. Check Alt Text status
-            $alt_exists_in_meta = metadata_exists( 'post', $att_id, '_wp_attachment_image_alt' );
+            if ( '' !== $alt_text ) {
+                $alt_exists_in_meta = true;
+            } else {
+                $alt_exists_in_meta = isset( $item['has_alt_meta'] )
+                    ? (bool) $item['has_alt_meta']
+                    : ( $att_id > 0 ? metadata_exists( 'post', $att_id, '_wp_attachment_image_alt' ) : false );
+            }
 
             if ( ! $alt_exists_in_meta ) {
                 $issues[] = 'missing_alt_attr';

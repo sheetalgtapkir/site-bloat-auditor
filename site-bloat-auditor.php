@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name:       Site Bloat & Storage Auditor
- * Plugin URI:        https://github.com/sheetal2311/site-bloat-auditor
+ * Plugin URI:        https://github.com/sheetalgtapkir/site-bloat-auditor
  * Description:       Audit orphaned database tables, unused media, and plugin storage bloat with safe backups and quarantine isolation.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            sheetal2311
@@ -827,13 +827,43 @@ function sba_get_plugin_disk_size_mb( $plugin_file ) {
 }
 
 /**
+ * Cross-platform file/directory readability check.
+ * Handles Windows PHP is_readable ACL quirks via stream fallback.
+ *
+ * @param string $path Path to check.
+ * @return bool True if readable.
+ */
+function sba_is_readable( $path ) {
+    if ( empty( $path ) || ! file_exists( $path ) ) {
+        return false;
+    }
+    if ( @is_readable( $path ) ) {
+        return true;
+    }
+    if ( is_dir( $path ) ) {
+        $dh = @opendir( $path );
+        if ( false !== $dh ) {
+            closedir( $dh );
+            return true;
+        }
+        return false;
+    }
+    $fh = @fopen( $path, 'rb' );
+    if ( false !== $fh ) {
+        fclose( $fh );
+        return true;
+    }
+    return false;
+}
+
+/**
  * Helper: Recursively calculate directory size in MB.
  *
  * @param string $dir_path Absolute directory path.
  * @return float Size in MB.
  */
 function sba_get_directory_size_mb( $dir_path ) {
-    if ( ! is_dir( $dir_path ) || ! is_readable( $dir_path ) ) {
+    if ( ! is_dir( $dir_path ) || ! sba_is_readable( $dir_path ) ) {
         return 0.0;
     }
 
@@ -2735,7 +2765,7 @@ function sba_get_quarantine_url() {
  */
 function sba_get_directory_size_bytes( $dir, $exclude_sub = 'sba-quarantine' ) {
     $size = 0;
-    if ( ! is_dir( $dir ) || ! is_readable( $dir ) ) {
+    if ( ! is_dir( $dir ) || ! sba_is_readable( $dir ) ) {
         return 0;
     }
 
@@ -2863,7 +2893,7 @@ function sba_validate_file_in_dir( $file_path, $allowed_base_dir ) {
  * @return array Array with ['success' => bool, 'error' => string, 'bytes' => int].
  */
 function sba_safe_move_file( $src, $dst, $allow_overwrite = false ) {
-    if ( ! file_exists( $src ) || ! is_readable( $src ) ) {
+    if ( ! file_exists( $src ) || ! sba_is_readable( $src ) ) {
         return [
             'success' => false,
             'error'   => sprintf( esc_html__( 'Source file does not exist or is unreadable: %s', 'site-bloat-auditor' ), basename( $src ) ),
@@ -3007,12 +3037,16 @@ function sba_ajax_scan_media_files() {
             'optimized_count'          => 0,
             'duplicates_count'         => 0,
             'accessibility_score'      => 100,
-            'total_scanned'            => 0,
-            'potentially_reclaimable'  => 0.00,
-            'reclaimable_space_mb'     => 0.00,
-            'potential_savings_mb'     => 0.00,
-            'quarantined_size_mb'      => $quarantined_size_mb,
-            'actual_reclaimed_mb'      => $actual_reclaimed_mb,
+            'total_scanned'                     => 0,
+            'potentially_reclaimable'           => 0.00,
+            'potentially_reclaimable_mb'        => 0.00,
+            'reclaimable_space_mb'              => 0.00,
+            'potential_savings_mb'              => 0.00,
+            'estimated_optimization_savings_mb' => 0.00,
+            'backup_storage_consumed_mb'        => $quarantined_size_mb,
+            'backup_storage_consumed_formatted' => size_format( $quarantine_bytes, 2 ),
+            'quarantined_size_mb'               => $quarantined_size_mb,
+            'actual_reclaimed_mb'               => $actual_reclaimed_mb,
             'all_items'                => [],
             'unused_items'             => [],
             'oversized_items'          => [],
@@ -3160,20 +3194,31 @@ function sba_ajax_scan_media_files() {
             $preview_url = includes_url( 'images/media/default.png' );
         }
 
-        // Build subsizes with responsive protection status
-        $responsive_keys = [ 'medium', 'medium_large', 'large' ];
-        $item_subsizes   = [];
+        // Priority 4: Differentiate thumbnail sub-sizes (responsive, theme registered, core admin, legacy)
+        $responsive_keys        = [ 'medium', 'medium_large', 'large' ];
+        $core_admin_keys        = [ 'thumbnail', '1536x1536', '2048x2048' ];
+        $registered_theme_sizes = function_exists( 'wp_get_registered_image_subsizes' ) ? wp_get_registered_image_subsizes() : [];
+        $item_subsizes          = [];
+
         foreach ( $inv_item['subsizes'] as $sub ) {
             $size_key = $sub['size_key'];
-            if ( $is_used && in_array( $size_key, $responsive_keys, true ) ) {
-                $sub_status = 'protected_responsive';
-                $sub_note   = esc_html__( 'Used by mobile/tablet responsive srcset', 'site-bloat-auditor' );
-            } elseif ( $is_used ) {
-                $sub_status = 'prunable';
-                $sub_note   = esc_html__( 'Optional: Non-essential thumbnail variant', 'site-bloat-auditor' );
+            if ( in_array( $size_key, $responsive_keys, true ) ) {
+                if ( $is_used ) {
+                    $sub_status = 'protected_responsive';
+                    $sub_note   = esc_html__( 'Used by mobile/tablet responsive srcset', 'site-bloat-auditor' );
+                } else {
+                    $sub_status = 'unreferenced_responsive';
+                    $sub_note   = esc_html__( 'Responsive srcset variant. Parent media has no references in scanned content; review before pruning.', 'site-bloat-auditor' );
+                }
+            } elseif ( in_array( $size_key, $core_admin_keys, true ) ) {
+                $sub_status = 'core_standard_size';
+                $sub_note   = esc_html__( 'Standard WordPress size (used in admin or media lists); review before pruning.', 'site-bloat-auditor' );
+            } elseif ( isset( $registered_theme_sizes[ $size_key ] ) ) {
+                $sub_status = 'unverified_template_usage';
+                $sub_note   = esc_html__( 'Registered by active theme/plugin. Template usage cannot be verified via post content alone; review before pruning.', 'site-bloat-auditor' );
             } else {
-                $sub_status = 'prunable';
-                $sub_note   = esc_html__( 'No references found in scanned content: Review before pruning', 'site-bloat-auditor' );
+                $sub_status = 'potential_unused';
+                $sub_note   = esc_html__( 'Legacy/unregistered image size not defined in current theme or active plugins. Candidate for cleanup (regenerable if needed).', 'site-bloat-auditor' );
             }
 
             $item_subsizes[] = array_merge( $sub, [
@@ -3222,39 +3267,135 @@ function sba_ajax_scan_media_files() {
         ];
     }
 
-    // 7. Compute category breakdowns and potential storage metrics
+    // 7. Compute category breakdowns and strict separated storage metrics (Priority 2)
     $unused_items    = array_values( array_filter( $all_scanned_items, fn( $i ) => $i['category'] === 'unused' ) );
     $oversized_items = array_values( array_filter( $all_scanned_items, fn( $i ) => $i['category'] === 'oversized' ) );
     $optimized_items = array_values( array_filter( $all_scanned_items, fn( $i ) => $i['category'] === 'optimized' ) );
 
-    $total_unused_bytes      = array_sum( array_column( $unused_items, 'file_size_bytes' ) );
-    $total_savings_bytes     = array_sum( array_column( $oversized_items, 'potential_savings_bytes' ) );
-    $potentially_reclaimable = round( $total_unused_bytes / ( 1024 * 1024 ), 2 );
-    $potential_savings_mb    = round( $total_savings_bytes / ( 1024 * 1024 ), 2 );
+    // Metric 1: Measured media storage on disk ($total_media_size_mb)
+
+    // Metric 2: Potentially reclaimable storage (deduplicated by normalized physical file path on disk)
+    $inv_by_id = [];
+    foreach ( $inventory_items as $inv ) {
+        $inv_by_id[ (int) $inv['id'] ] = $inv;
+    }
+
+    $reclaimable_physical_files = [];
+
+    // A. Collect from unreferenced media items
+    foreach ( $unused_items as $u_item ) {
+        $aid = (int) $u_item['id'];
+        $inv = $inv_by_id[ $aid ] ?? null;
+        if ( ! $inv ) {
+            continue;
+        }
+
+        $orig_path = ! empty( $inv['file_path'] ) ? wp_normalize_path( $inv['file_path'] ) : '';
+        if ( $orig_path && file_exists( $orig_path ) ) {
+            $norm_key = strtolower( $orig_path );
+            if ( ! isset( $reclaimable_physical_files[ $norm_key ] ) ) {
+                $reclaimable_physical_files[ $norm_key ] = (int) @filesize( $orig_path );
+            }
+        }
+
+        if ( ! empty( $inv['subsizes'] ) && is_array( $inv['subsizes'] ) ) {
+            foreach ( $inv['subsizes'] as $sub ) {
+                $sub_path = ! empty( $sub['path'] ) ? wp_normalize_path( $sub['path'] ) : '';
+                if ( $sub_path && file_exists( $sub_path ) ) {
+                    $norm_key = strtolower( $sub_path );
+                    if ( ! isset( $reclaimable_physical_files[ $norm_key ] ) ) {
+                        $reclaimable_physical_files[ $norm_key ] = (int) ( $sub['bytes'] ?? @filesize( $sub_path ) );
+                    }
+                }
+            }
+        }
+    }
+
+    // B. Collect from candidate duplicate items (excluding keeper copy)
+    foreach ( $duplicate_groups as $dg ) {
+        foreach ( $dg['items'] as $d_item ) {
+            if ( ! empty( $d_item['is_keeper'] ) ) {
+                continue; // Keeper copy is preserved
+            }
+
+            $aid = (int) $d_item['id'];
+            $inv = $inv_by_id[ $aid ] ?? null;
+            if ( ! $inv ) {
+                continue;
+            }
+
+            $orig_path = ! empty( $inv['file_path'] ) ? wp_normalize_path( $inv['file_path'] ) : '';
+            if ( $orig_path && file_exists( $orig_path ) ) {
+                $norm_key = strtolower( $orig_path );
+                // Deduplicate: If file already counted via unused_items or shared attachment, skip
+                if ( ! isset( $reclaimable_physical_files[ $norm_key ] ) ) {
+                    $reclaimable_physical_files[ $norm_key ] = (int) @filesize( $orig_path );
+                }
+            }
+
+            if ( ! empty( $inv['subsizes'] ) && is_array( $inv['subsizes'] ) ) {
+                foreach ( $inv['subsizes'] as $sub ) {
+                    $sub_path = ! empty( $sub['path'] ) ? wp_normalize_path( $sub['path'] ) : '';
+                    if ( $sub_path && file_exists( $sub_path ) ) {
+                        $norm_key = strtolower( $sub_path );
+                        if ( ! isset( $reclaimable_physical_files[ $norm_key ] ) ) {
+                            $reclaimable_physical_files[ $norm_key ] = (int) ( $sub['bytes'] ?? @filesize( $sub_path ) );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    $potentially_reclaimable_bytes = array_sum( $reclaimable_physical_files );
+    $potentially_reclaimable_mb    = round( $potentially_reclaimable_bytes / ( 1024 * 1024 ), 2 );
+
+    // Metric 3: Estimated optimization savings (hypothetical size difference from compression/resizing)
+    $total_savings_bytes  = array_sum( array_column( $oversized_items, 'potential_savings_bytes' ) );
+    $potential_savings_mb = round( $total_savings_bytes / ( 1024 * 1024 ), 2 );
+
+    // Metric 4: Backup storage consumed (measured ONLY from files that actually exist on disk)
+    $opt_backups      = (array) get_option( SBA_Image_Optimizer::BACKUP_OPTION_KEY, [] );
+    $opt_backup_bytes = 0;
+    foreach ( $opt_backups as $b ) {
+        $bp = $b['backup_path'] ?? '';
+        if ( $bp && file_exists( $bp ) && sba_is_readable( $bp ) ) {
+            $opt_backup_bytes += (int) @filesize( $bp );
+        }
+    }
+    $backup_storage_consumed_bytes = $quarantine_bytes + $opt_backup_bytes;
+    $backup_storage_consumed_mb    = round( $backup_storage_consumed_bytes / ( 1024 * 1024 ), 2 );
+
+    // Metric 5: Storage physically reclaimed after confirmed deletion
+    $actual_reclaimed_mb = round( $actual_reclaimed_b / ( 1024 * 1024 ), 2 );
 
     wp_send_json_success( [
-        'total_media_size_mb'      => $total_media_size_mb,
-        'unused_count'             => count( $unused_items ),
-        'oversized_count'          => count( $oversized_items ),
-        'optimized_count'          => count( $optimized_items ),
-        'duplicates_count'         => count( $duplicate_groups ),
-        'accessibility_score'      => $accessibility_report['summary']['accessibility_score'] ?? 100,
-        'total_scanned'            => count( $all_scanned_items ),
-        'potentially_reclaimable'  => $potentially_reclaimable,
-        'reclaimable_space_mb'     => $potentially_reclaimable, // Backwards compatibility
-        'potential_savings_mb'     => $potential_savings_mb,
-        'quarantined_size_mb'      => $quarantined_size_mb,
-        'actual_reclaimed_mb'      => $actual_reclaimed_mb,
-        'all_items'                => $all_scanned_items,
-        'unused_items'             => $unused_items,
-        'oversized_items'          => $oversized_items,
-        'optimized_items'          => $optimized_items,
-        'duplicates'               => $duplicate_groups,
-        'accessibility'            => $accessibility_report,
-        'discrepancies'            => $discrepancies,
-        'quarantined_items'        => $quarantined_items,
-        'quarantined_count'        => count( $quarantined_items ),
-        'env_support'              => $env_support,
+        'total_media_size_mb'               => $total_media_size_mb,
+        'unused_count'                      => count( $unused_items ),
+        'oversized_count'                   => count( $oversized_items ),
+        'optimized_count'                   => count( $optimized_items ),
+        'duplicates_count'                  => count( $duplicate_groups ),
+        'accessibility_score'               => $accessibility_report['summary']['accessibility_score'] ?? 100,
+        'total_scanned'                     => count( $all_scanned_items ),
+        'potentially_reclaimable'           => $potentially_reclaimable_mb,
+        'potentially_reclaimable_mb'        => $potentially_reclaimable_mb,
+        'reclaimable_space_mb'              => $potentially_reclaimable_mb, // Backwards compatibility
+        'potential_savings_mb'              => $potential_savings_mb,
+        'estimated_optimization_savings_mb' => $potential_savings_mb,
+        'backup_storage_consumed_mb'        => $backup_storage_consumed_mb,
+        'backup_storage_consumed_formatted' => size_format( $backup_storage_consumed_bytes, 2 ),
+        'quarantined_size_mb'               => $quarantined_size_mb,
+        'actual_reclaimed_mb'               => $actual_reclaimed_mb,
+        'all_items'                         => $all_scanned_items,
+        'unused_items'                      => $unused_items,
+        'oversized_items'                   => $oversized_items,
+        'optimized_items'                   => $optimized_items,
+        'duplicates'                        => $duplicate_groups,
+        'accessibility'                     => $accessibility_report,
+        'discrepancies'                     => $discrepancies,
+        'quarantined_items'                 => $quarantined_items,
+        'quarantined_count'                 => count( $quarantined_items ),
+        'env_support'                       => $env_support,
     ] );
 }
 
