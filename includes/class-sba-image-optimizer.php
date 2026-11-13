@@ -52,35 +52,108 @@ class SBA_Image_Optimizer {
      * @return array Analysis findings.
      */
     public function analyze_image( $att_id, $meta = null, $is_hero = false ) {
-        if ( null === $meta ) {
+        if ( null === $meta && $att_id ) {
             $meta = wp_get_attachment_metadata( $att_id );
         }
 
-        $file_path = get_attached_file( $att_id );
-        $orig_w    = (int) ( $meta['width'] ?? 0 );
-        $orig_h    = (int) ( $meta['height'] ?? 0 );
-        $filesize  = ( $file_path && file_exists( $file_path ) ) ? (int) @filesize( $file_path ) : 0;
+        $file_path = $att_id ? get_attached_file( $att_id ) : '';
+        if ( $file_path ) {
+            $file_path = wp_normalize_path( $file_path );
+        }
+
+        // Determine actual current dimensions on disk
+        $curr_w = 0;
+        $curr_h = 0;
+        if ( $file_path && file_exists( $file_path ) && $this->is_file_readable( $file_path ) ) {
+            $curr_info = @getimagesize( $file_path );
+            if ( false !== $curr_info && ! empty( $curr_info[0] ) && ! empty( $curr_info[1] ) ) {
+                $curr_w = (int) $curr_info[0];
+                $curr_h = (int) $curr_info[1];
+            }
+        }
+        if ( $curr_w <= 0 || $curr_h <= 0 ) {
+            $curr_w = (int) ( $meta['width'] ?? 0 );
+            $curr_h = (int) ( $meta['height'] ?? 0 );
+        }
+
+        $filesize = ( $file_path && file_exists( $file_path ) ) ? (int) @filesize( $file_path ) : 0;
+
+        // Retrieve verified original dimensions from backup record or .sba-orig backup file if backed up
+        $backups               = (array) get_option( self::BACKUP_OPTION_KEY, [] );
+        $has_backup            = ( $att_id && isset( $backups[ $att_id ] ) );
+        $backup_record         = $has_backup ? $backups[ $att_id ] : null;
+        $orig_w                = 0;
+        $orig_h                = 0;
+        $has_verified_orig_dim = false;
+
+        if ( $has_backup && $backup_record ) {
+            $b_meta = $backup_record['original_meta'] ?? [];
+            $orig_w = (int) ( $b_meta['width'] ?? 0 );
+            $orig_h = (int) ( $b_meta['height'] ?? 0 );
+            if ( $orig_w <= 0 || $orig_h <= 0 ) {
+                $b_path = $backup_record['backup_path'] ?? ( $file_path . '.sba-orig' );
+                if ( $b_path && file_exists( $b_path ) && $this->is_file_readable( $b_path ) ) {
+                    $b_info = @getimagesize( $b_path );
+                    if ( false !== $b_info && ! empty( $b_info[0] ) && ! empty( $b_info[1] ) ) {
+                        $orig_w = (int) $b_info[0];
+                        $orig_h = (int) $b_info[1];
+                    }
+                }
+            }
+            if ( $orig_w > 0 && $orig_h > 0 ) {
+                $orig_dim_str          = "{$orig_w} × {$orig_h} px";
+                $has_verified_orig_dim = true;
+            } else {
+                $orig_dim_str          = esc_html__( 'Original dimensions unavailable', 'site-bloat-auditor' );
+                $has_verified_orig_dim = false;
+            }
+        } else {
+            // Not backed up: current file on disk is the original
+            $orig_w                = $curr_w;
+            $orig_h                = $curr_h;
+            $orig_dim_str          = ( $orig_w > 0 && $orig_h > 0 ) ? "{$orig_w} × {$orig_h} px" : 'N/A';
+            $has_verified_orig_dim = ( $orig_w > 0 && $orig_h > 0 );
+        }
+
+        $curr_dim_str = ( $curr_w > 0 && $curr_h > 0 ) ? "{$curr_w} × {$curr_h} px" : 'N/A';
+        $is_resized   = ( $has_backup && $has_verified_orig_dim && $curr_w > 0 && $curr_h > 0 && ( $curr_w !== $orig_w || $curr_h !== $orig_h ) );
 
         // Benchmarks: 1920px max for hero/featured, 1200px max for content
-        $benchmark_w = $is_hero ? 1920 : 1200;
-        $is_oversized_dim = ( $orig_w > $benchmark_w );
+        $benchmark_w        = $is_hero ? 1920 : 1200;
+        $is_oversized_dim   = ( $curr_w > $benchmark_w );
         $is_oversized_bytes = ( $filesize > 512000 ); // > 500 KB
 
-        $rec_w = $orig_w;
-        $rec_h = $orig_h;
-
-        if ( $is_oversized_dim && $orig_w > 0 && $orig_h > 0 ) {
-            $rec_w = $benchmark_w;
-            $rec_h = (int) round( ( $benchmark_w / $orig_w ) * $orig_h );
+        if ( $is_oversized_dim && $curr_w > 0 && $curr_h > 0 ) {
+            $rec_w               = $benchmark_w;
+            $rec_h               = (int) round( ( $benchmark_w / $curr_w ) * $curr_h );
+            $rec_dim_str         = "{$rec_w} × {$rec_h} px";
+            $target_reached      = false;
+            $recommendation_text = sprintf(
+                /* translators: %s: recommended resolution */
+                esc_html__( 'Scale down to %s', 'site-bloat-auditor' ),
+                $rec_dim_str
+            );
+        } else {
+            $rec_w               = $curr_w;
+            $rec_h               = $curr_h;
+            $rec_dim_str         = $curr_dim_str;
+            $target_reached      = true;
+            $recommendation_text = esc_html__( 'Target dimensions reached — no further resizing needed.', 'site-bloat-auditor' );
         }
+
+        // Check WebP status separately
+        $webp_path = $file_path ? preg_replace( '/\.[^.]+$/', '.webp', $file_path ) : '';
+        $has_webp  = ( $file_path && strtolower( substr( $file_path, -5 ) ) === '.webp' ) ||
+                     ( ! empty( $meta['sba_webp']['path'] ) && file_exists( $meta['sba_webp']['path'] ) ) ||
+                     ( $webp_path && file_exists( $webp_path ) && (int) @filesize( $webp_path ) > 0 );
 
         // Estimate optimized size
         $estimated_bytes = $filesize;
         $savings_bytes   = 0;
 
         if ( $is_oversized_dim || $is_oversized_bytes ) {
-            if ( $is_oversized_dim && $orig_w > 0 ) {
-                $scale_factor = ( $rec_w * $rec_h ) / ( $orig_w * $orig_h );
+            if ( $is_oversized_dim && $curr_w > 0 ) {
+                $scale_factor    = ( $rec_w * $rec_h ) / ( $curr_w * $curr_h );
                 $estimated_bytes = (int) round( $filesize * $scale_factor * 0.85 );
             } else {
                 $estimated_bytes = (int) round( $filesize * 0.70 ); // compression savings estimate
@@ -91,23 +164,35 @@ class SBA_Image_Optimizer {
         $savings_percent = ( $filesize > 0 && $savings_bytes > 0 ) ? round( ( $savings_bytes / $filesize ) * 100, 1 ) : 0;
 
         return [
-            'is_oversized'        => ( $is_oversized_dim || $is_oversized_bytes ),
-            'is_oversized_dim'    => $is_oversized_dim,
-            'is_oversized_bytes'  => $is_oversized_bytes,
-            'original_width'      => $orig_w,
-            'original_height'     => $orig_h,
-            'original_dim'        => ( $orig_w > 0 && $orig_h > 0 ) ? "{$orig_w} × {$orig_h} px" : 'N/A',
-            'recommended_width'   => $rec_w,
-            'recommended_height'  => $rec_h,
-            'recommended_dim'     => ( $rec_w > 0 && $rec_h > 0 ) ? "{$rec_w} × {$rec_h} px" : 'N/A',
-            'current_size_bytes'  => $filesize,
-            'current_size_fmt'    => size_format( $filesize, 2 ),
-            'estimated_size_bytes'=> $estimated_bytes,
-            'estimated_size_fmt'  => size_format( $estimated_bytes, 2 ),
-            'savings_bytes'       => $savings_bytes,
-            'savings_fmt'         => size_format( $savings_bytes, 2 ),
-            'savings_percent'     => $savings_percent,
-            'assumptions'         => esc_html__( 'Assumes 82% quality compression and proportional downscaling to display benchmark.', 'site-bloat-auditor' ),
+            'is_oversized'           => $is_oversized_dim,
+            'is_oversized_dim'       => $is_oversized_dim,
+            'is_oversized_bytes'     => $is_oversized_bytes,
+            'original_width'         => $orig_w,
+            'original_height'        => $orig_h,
+            'original_dim'           => $orig_dim_str,
+            'original_dimensions'    => $orig_dim_str,
+            'has_verified_orig_dim'  => $has_verified_orig_dim,
+            'current_width'          => $curr_w,
+            'current_height'         => $curr_h,
+            'current_dim'            => $curr_dim_str,
+            'current_dimensions'     => $curr_dim_str,
+            'is_resized'             => $is_resized,
+            'target_reached'         => $target_reached,
+            'recommendation_text'    => $recommendation_text,
+            'recommended_width'      => $rec_w,
+            'recommended_height'     => $rec_h,
+            'recommended_dim'        => $rec_dim_str,
+            'recommended_dimensions' => $rec_dim_str,
+            'has_webp'               => $has_webp,
+            'has_backup'             => $has_backup,
+            'current_size_bytes'     => $filesize,
+            'current_size_fmt'       => size_format( $filesize, 2 ),
+            'estimated_size_bytes'   => $estimated_bytes,
+            'estimated_size_fmt'     => size_format( $estimated_bytes, 2 ),
+            'savings_bytes'          => $savings_bytes,
+            'savings_fmt'            => size_format( $savings_bytes, 2 ),
+            'savings_percent'        => $savings_percent,
+            'assumptions'            => esc_html__( 'Assumes 82% quality compression and proportional downscaling to display benchmark.', 'site-bloat-auditor' ),
         ];
     }
 
@@ -159,6 +244,16 @@ class SBA_Image_Optimizer {
         $quality = (int) ( $options['quality'] ?? 82 );
         $quality = max( 40, min( 95, $quality ) );
 
+        // WebP Support Verification
+        $env_support       = $this->check_environment_support();
+        $force_unsupported = ! empty( $options['force_webp_unsupported'] ) || apply_filters( 'sba_force_webp_unsupported', false );
+        if ( $force_unsupported || empty( $env_support['supports_webp'] ) ) {
+            return new WP_Error(
+                'webp_unsupported',
+                esc_html__( 'WebP conversion is unsupported: PHP GD imagewebp or Imagick WebP encoder is not available on this server.', 'site-bloat-auditor' )
+            );
+        }
+
         // Step 1: Stage a safe backup of the original file (never touch or replace existing backup until staging verified)
         $backup_path     = $file_path . '.sba-orig';
         $old_backup_hold = '';
@@ -195,6 +290,16 @@ class SBA_Image_Optimizer {
             return $editor;
         }
 
+        if ( ! $editor->supports_mime_type( 'image/webp' ) ) {
+            if ( $stage_backup && file_exists( $stage_backup ) ) {
+                @unlink( $stage_backup );
+            }
+            return new WP_Error(
+                'webp_unsupported',
+                esc_html__( 'The selected WordPress image editor does not support WebP generation.', 'site-bloat-auditor' )
+            );
+        }
+
         // Step 3: Resize if target dimension is smaller than original
         if ( $max_w > 0 && $orig_width > $max_w ) {
             $resized = $editor->resize( $max_w, $max_h, false );
@@ -209,71 +314,111 @@ class SBA_Image_Optimizer {
         // Set compression quality
         $editor->set_quality( $quality );
 
-        // Step 4: Save optimized version to temporary file preserving extension for editor compatibility
-        $ext       = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
-        $temp_dest = dirname( $file_path ) . '/sba-opt-tmp-' . wp_generate_password( 8, false, false ) . '.' . $ext;
-        $save_result = $editor->save( $temp_dest );
+        // Step 4: Generate genuine WebP version to temporary staging file
+        $webp_path     = preg_replace( '/\.[^.]+$/', '.webp', $file_path );
+        $temp_webp     = dirname( $file_path ) . '/sba-opt-tmp-' . wp_generate_password( 8, false, false ) . '.webp';
+        $save_webp_res = $editor->save( $temp_webp, 'image/webp' );
 
-        $saved_file = ( is_array( $save_result ) && ! empty( $save_result['path'] ) && file_exists( $save_result['path'] ) )
-            ? $save_result['path']
-            : ( file_exists( $temp_dest ) ? $temp_dest : false );
+        $saved_webp = ( is_array( $save_webp_res ) && ! empty( $save_webp_res['path'] ) && file_exists( $save_webp_res['path'] ) )
+            ? $save_webp_res['path']
+            : ( file_exists( $temp_webp ) ? $temp_webp : false );
 
-        if ( is_wp_error( $save_result ) || ! $saved_file ) {
-            if ( file_exists( $temp_dest ) ) {
-                @unlink( $temp_dest );
+        if ( is_wp_error( $save_webp_res ) || ! $saved_webp ) {
+            if ( file_exists( $temp_webp ) ) {
+                @unlink( $temp_webp );
             }
             if ( $stage_backup && file_exists( $stage_backup ) ) {
                 @unlink( $stage_backup );
             }
-            return is_wp_error( $save_result ) ? $save_result : new WP_Error( 'save_failed', esc_html__( 'Failed to save optimized image.', 'site-bloat-auditor' ) );
+            return is_wp_error( $save_webp_res ) ? $save_webp_res : new WP_Error( 'webp_failed', esc_html__( 'Failed to generate WebP image.', 'site-bloat-auditor' ) );
         }
 
-        $new_size = (int) filesize( $saved_file );
-
-        // Step 5: Full validation of optimized output before replacing original file
-        if ( $new_size <= 0 ) {
-            @unlink( $saved_file );
+        // Step 5: Full validation of WebP output
+        $webp_valid = $this->validate_webp_file( $saved_webp );
+        if ( is_wp_error( $webp_valid ) ) {
+            @unlink( $saved_webp );
             if ( $stage_backup && file_exists( $stage_backup ) ) {
                 @unlink( $stage_backup );
             }
-            return new WP_Error( 'empty_output', esc_html__( 'Optimized image generated 0 bytes.', 'site-bloat-auditor' ) );
+            return $webp_valid;
         }
+        $webp_size = (int) filesize( $saved_webp );
 
-        // Image decoding validation
-        $img_info = @getimagesize( $saved_file );
-        if ( false === $img_info || empty( $img_info[0] ) || empty( $img_info[1] ) ) {
-            @unlink( $saved_file );
-            if ( $stage_backup && file_exists( $stage_backup ) ) {
-                @unlink( $stage_backup );
-            }
-            return new WP_Error( 'corrupt_output', esc_html__( 'Optimized image failed image decoding verification.', 'site-bloat-auditor' ) );
-        }
+        // Step 5b: Handle original-format optimization for compatibility
+        $is_already_webp = ( strtolower( $webp_path ) === strtolower( $file_path ) );
+        $saved_file      = '';
+        $new_size        = 0;
+        $temp_dest       = '';
 
-        // MIME type validation
-        $detected_mime = $img_info['mime'] ?? '';
-        $valid_image_mimes = [ 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif' ];
-        if ( ! in_array( $detected_mime, $valid_image_mimes, true ) ) {
-            @unlink( $saved_file );
-            if ( $stage_backup && file_exists( $stage_backup ) ) {
-                @unlink( $stage_backup );
+        if ( $is_already_webp ) {
+            $saved_file = $saved_webp;
+            $new_size   = $webp_size;
+        } else {
+            // Save downscaled/compressed version preserving original format so existing URLs never break
+            $ext         = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
+            $temp_dest   = dirname( $file_path ) . '/sba-opt-tmp-' . wp_generate_password( 8, false, false ) . '.' . $ext;
+            $save_result = $editor->save( $temp_dest );
+
+            $saved_file = ( is_array( $save_result ) && ! empty( $save_result['path'] ) && file_exists( $save_result['path'] ) )
+                ? $save_result['path']
+                : ( file_exists( $temp_dest ) ? $temp_dest : false );
+
+            if ( is_wp_error( $save_result ) || ! $saved_file ) {
+                @unlink( $saved_webp );
+                if ( file_exists( $temp_dest ) ) {
+                    @unlink( $temp_dest );
+                }
+                if ( $stage_backup && file_exists( $stage_backup ) ) {
+                    @unlink( $stage_backup );
+                }
+                return is_wp_error( $save_result ) ? $save_result : new WP_Error( 'save_failed', esc_html__( 'Failed to save optimized image.', 'site-bloat-auditor' ) );
             }
-            return new WP_Error( 'invalid_mime', sprintf( esc_html__( 'Optimized file produced invalid MIME type "%s".', 'site-bloat-auditor' ), esc_html( $detected_mime ) ) );
+
+            $new_size = (int) filesize( $saved_file );
+
+            // Image decoding validation on original format file
+            $img_info = @getimagesize( $saved_file );
+            if ( false === $img_info || empty( $img_info[0] ) || empty( $img_info[1] ) ) {
+                @unlink( $saved_file );
+                @unlink( $saved_webp );
+                if ( $stage_backup && file_exists( $stage_backup ) ) {
+                    @unlink( $stage_backup );
+                }
+                return new WP_Error( 'corrupt_output', esc_html__( 'Optimized image failed image decoding verification.', 'site-bloat-auditor' ) );
+            }
+
+            // MIME type validation
+            $detected_mime     = $img_info['mime'] ?? '';
+            $valid_image_mimes = [ 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif' ];
+            if ( ! in_array( $detected_mime, $valid_image_mimes, true ) ) {
+                @unlink( $saved_file );
+                @unlink( $saved_webp );
+                if ( $stage_backup && file_exists( $stage_backup ) ) {
+                    @unlink( $stage_backup );
+                }
+                return new WP_Error( 'invalid_mime', sprintf( esc_html__( 'Optimized file produced invalid MIME type "%s".', 'site-bloat-auditor' ), esc_html( $detected_mime ) ) );
+            }
         }
 
         // Verify that optimization actually reduced file size
-        if ( $new_size >= $orig_size ) {
-            @unlink( $saved_file );
+        if ( $new_size >= $orig_size && $webp_size >= $orig_size ) {
+            if ( $saved_file && file_exists( $saved_file ) ) {
+                @unlink( $saved_file );
+            }
+            if ( $saved_webp && file_exists( $saved_webp ) && $saved_webp !== $saved_file ) {
+                @unlink( $saved_webp );
+            }
             if ( $stage_backup && file_exists( $stage_backup ) ) {
                 @unlink( $stage_backup );
             }
             return new WP_Error( 'no_savings', sprintf(
                 esc_html__( 'Optimization skipped: The image is already well compressed (%1$s vs %2$s). Original file preserved.', 'site-bloat-auditor' ),
                 size_format( $orig_size, 2 ),
-                size_format( $new_size, 2 )
+                size_format( min( $new_size, $webp_size ), 2 )
             ) );
         }
 
-        // Step 6: Commit safety backup and perform recoverable original-image replacement
+        // Step 6: Commit safety backup and perform recoverable file placement
         if ( ! $existing_valid && $stage_backup && file_exists( $stage_backup ) ) {
             if ( file_exists( $backup_path ) ) {
                 $old_backup_hold = $backup_path . '.old-hold-' . wp_generate_password( 8, false, false );
@@ -298,6 +443,9 @@ class SBA_Image_Optimizer {
                     @rename( $old_backup_hold, $backup_path );
                 }
                 @unlink( $saved_file );
+                if ( ! $is_already_webp && file_exists( $saved_webp ) ) {
+                    @unlink( $saved_webp );
+                }
                 return new WP_Error( 'backup_commit_failed', esc_html__( 'Final safety backup on disk failed SHA-256 verification.', 'site-bloat-auditor' ) );
             }
         }
@@ -307,10 +455,36 @@ class SBA_Image_Optimizer {
         $verify_backup_hash = file_exists( $backup_path ) ? hash_file( 'sha256', $backup_path ) : '';
         if ( $verify_backup_hash !== $orig_sha256 ) {
             @unlink( $saved_file );
+            if ( ! $is_already_webp && file_exists( $saved_webp ) ) {
+                @unlink( $saved_webp );
+            }
             if ( $old_backup_hold && file_exists( $old_backup_hold ) ) {
                 @rename( $old_backup_hold, $backup_path );
             }
             return new WP_Error( 'backup_verification_failed', esc_html__( 'Replacement aborted: Safety backup file failed integrity check. Original file was preserved untouched.', 'site-bloat-auditor' ) );
+        }
+
+        // Commit WebP companion file if not already webp
+        if ( ! $is_already_webp ) {
+            $webp_committed = @rename( $saved_webp, $webp_path );
+            if ( ! $webp_committed ) {
+                $webp_committed = @copy( $saved_webp, $webp_path );
+                if ( $webp_committed ) {
+                    @unlink( $saved_webp );
+                }
+            }
+            clearstatcache( true, $webp_path );
+            $verify_webp_commit = $this->validate_webp_file( $webp_path );
+            if ( is_wp_error( $verify_webp_commit ) ) {
+                if ( file_exists( $webp_path ) ) {
+                    @unlink( $webp_path );
+                }
+                @unlink( $saved_file );
+                if ( $old_backup_hold && file_exists( $old_backup_hold ) ) {
+                    @rename( $old_backup_hold, $backup_path );
+                }
+                return $verify_webp_commit;
+            }
         }
 
         // Stage original file hold in the same directory prior to replacement
@@ -318,6 +492,9 @@ class SBA_Image_Optimizer {
         if ( ! @rename( $file_path, $orig_hold ) ) {
             if ( ! @copy( $file_path, $orig_hold ) ) {
                 @unlink( $saved_file );
+                if ( ! $is_already_webp && file_exists( $webp_path ) ) {
+                    @unlink( $webp_path );
+                }
                 if ( $old_backup_hold && file_exists( $old_backup_hold ) ) {
                     @rename( $old_backup_hold, $backup_path );
                 }
@@ -358,6 +535,9 @@ class SBA_Image_Optimizer {
             if ( $old_backup_hold && file_exists( $old_backup_hold ) ) {
                 @rename( $old_backup_hold, $backup_path );
             }
+            if ( ! $is_already_webp && file_exists( $webp_path ) ) {
+                @unlink( $webp_path );
+            }
             @unlink( $saved_file );
             if ( file_exists( $orig_hold ) ) {
                 @unlink( $orig_hold );
@@ -373,7 +553,9 @@ class SBA_Image_Optimizer {
         }
 
         clearstatcache( true, $file_path );
+        clearstatcache( true, $webp_path );
         $final_size  = (int) filesize( $file_path );
+        $final_webp  = (int) filesize( $webp_path );
         $freed_bytes = max( 0, $orig_size - $final_size );
 
         // Step 7: Update attachment metadata using a modified copy
@@ -384,6 +566,14 @@ class SBA_Image_Optimizer {
             $new_meta['height'] = (int) $new_dimensions['height'];
         }
         $new_meta['filesize'] = $final_size;
+        $new_meta['sba_webp'] = [
+            'file'      => wp_basename( $webp_path ),
+            'path'      => $webp_path,
+            'filesize'  => $final_webp,
+            'mime_type' => 'image/webp',
+            'width'     => (int) ( $new_dimensions['width'] ?? $orig_width ),
+            'height'    => (int) ( $new_dimensions['height'] ?? $orig_height ),
+        ];
         wp_update_attachment_metadata( $att_id, $new_meta );
 
         // Step 8: Store backup record with original hash and pristine original metadata
@@ -391,30 +581,75 @@ class SBA_Image_Optimizer {
             'attachment_id'   => $att_id,
             'file_path'       => $file_path,
             'backup_path'     => $backup_path,
+            'webp_path'       => $webp_path,
             'original_size'   => $orig_size,
             'original_sha256' => $orig_sha256,
             'optimized_size'  => $final_size,
+            'webp_size'       => $final_webp,
             'freed_bytes'     => $freed_bytes,
             'original_meta'   => $orig_meta, // Preserves untouched original metadata for flawless rollback
             'optimized_time'  => time(),
+            'output_format'   => 'webp',
         ];
         update_option( self::BACKUP_OPTION_KEY, $backups, false );
 
-        // NOTE: Optimization size differences are NOT counted as physically reclaimed disk space
-        // because the .sba-orig backup file remains stored on disk.
+        $new_w = (int) ( $new_meta['width'] ?? 0 );
+        $new_h = (int) ( $new_meta['height'] ?? 0 );
+        $new_dim_str = ( $new_w > 0 && $new_h > 0 ) ? "{$new_w} × {$new_h} px" : 'N/A';
+        $orig_dim_str = ( $orig_width > 0 && $orig_height > 0 ) ? "{$orig_width} × {$orig_height} px" : 'N/A';
+        $is_resized   = ( $orig_width > 0 && $new_w > 0 && ( $orig_width !== $new_w || $orig_height !== $new_h ) );
 
         return [
             'attachment_id'        => $att_id,
+            'file_path'            => $file_path,
+            'output_path'          => $webp_path,
+            'webp_path'            => $webp_path,
+            'output_format'        => 'webp',
+            'is_webp'              => true,
+            'has_webp'             => true,
+            'conversion_status'    => 'converted',
+            'original_size_bytes'  => $orig_size,
             'original_size_fmt'    => size_format( $orig_size, 2 ),
+            'optimized_size_bytes' => $final_size,
             'optimized_size_fmt'   => size_format( $final_size, 2 ),
+            'webp_size_bytes'      => $final_webp,
+            'webp_size_fmt'        => size_format( $final_webp, 2 ),
+            'file_size_formatted'  => size_format( $final_size, 2 ),
             'freed_bytes'          => $freed_bytes,
             'freed_bytes_fmt'      => size_format( $freed_bytes, 2 ),
-            'savings_percent'      => round( ( $freed_bytes / $orig_size ) * 100, 1 ),
-            'new_dimensions'       => ( ! empty( $new_meta['width'] ) ? "{$new_meta['width']} × {$new_meta['height']} px" : 'N/A' ),
+            'saved_bytes'          => $freed_bytes,
+            'saved_bytes_fmt'      => size_format( $freed_bytes, 2 ),
+            'savings_percent'      => ( $orig_size > 0 ) ? round( ( $freed_bytes / $orig_size ) * 100, 1 ) : 0,
+            'original_width'       => $orig_width,
+            'original_height'      => $orig_height,
+            'original_dimensions'  => $orig_dim_str,
+            'has_verified_orig_dim'=> ( $orig_width > 0 && $orig_height > 0 ),
+            'current_width'        => $new_w,
+            'current_height'       => $new_h,
+            'current_dimensions'   => $new_dim_str,
+            'width'                => $new_w,
+            'height'               => $new_h,
+            'new_dimensions'       => $new_dim_str,
+            'dimensions'           => $new_dim_str,
+            'is_resized'           => $is_resized,
+            'target_reached'       => true,
+            'recommendation_text'  => esc_html__( 'Target dimensions reached — no further resizing needed.', 'site-bloat-auditor' ),
+            'recommended_width'    => $new_w,
+            'recommended_height'   => $new_h,
+            'recommended_dim'      => $new_dim_str,
+            'recommended_dimensions' => $new_dim_str,
+            'has_backup'           => true,
+            'original_sha256'      => $orig_sha256,
+            'backup_path'          => $backup_path,
+            'is_oversized'         => false,
+            'category'             => 'optimized',
+            'category_label'       => esc_html__( 'Optimized', 'site-bloat-auditor' ),
+            'recommendation_badge' => esc_html__( 'Web Optimized (WebP)', 'site-bloat-auditor' ),
+            'badge_class'          => 'sba-pill-active',
             'message'              => sprintf(
-                esc_html__( 'Image optimized successfully! Saved %1$s (%2$s%%). Original backup preserved.', 'site-bloat-auditor' ),
+                esc_html__( 'Image optimized to WebP successfully! Saved %1$s (%2$s%%). Original backup preserved.', 'site-bloat-auditor' ),
                 size_format( $freed_bytes, 2 ),
-                round( ( $freed_bytes / $orig_size ) * 100, 1 )
+                ( $orig_size > 0 ) ? round( ( $freed_bytes / $orig_size ) * 100, 1 ) : 0
             ),
         ];
     }
@@ -518,16 +753,168 @@ class SBA_Image_Optimizer {
             wp_update_attachment_metadata( $att_id, $record['original_meta'] );
         }
 
+        // Clean up companion WebP file if generated
+        $webp_file = ! empty( $record['webp_path'] ) ? $record['webp_path'] : preg_replace( '/\.[^.]+$/', '.webp', $file_path );
+        if ( $webp_file !== $file_path && file_exists( $webp_file ) ) {
+            @unlink( $webp_file );
+        }
+
         // Step 5: Do not remove backup record and backup file until file restoration and metadata are confirmed
         @unlink( $backup_path );
         unset( $backups[ $att_id ] );
         update_option( self::BACKUP_OPTION_KEY, $backups, false );
 
+        $orig_meta = $record['original_meta'] ?? [];
+        $orig_w    = (int) ( $orig_meta['width'] ?? 0 );
+        $orig_h    = (int) ( $orig_meta['height'] ?? 0 );
+        if ( ( $orig_w <= 0 || $orig_h <= 0 ) && file_exists( $file_path ) ) {
+            $restored_info = @getimagesize( $file_path );
+            if ( false !== $restored_info && ! empty( $restored_info[0] ) && ! empty( $restored_info[1] ) ) {
+                $orig_w = (int) $restored_info[0];
+                $orig_h = (int) $restored_info[1];
+            }
+        }
+        $orig_size          = (int) $record['original_size'];
+        $benchmark_w        = 1200;
+        $is_oversized_again = ( $orig_w > $benchmark_w );
+        $orig_dim_str       = ( $orig_w > 0 && $orig_h > 0 ) ? "{$orig_w} × {$orig_h} px" : 'N/A';
+
+        if ( $is_oversized_again && $orig_w > 0 ) {
+            $rec_w       = $benchmark_w;
+            $rec_h       = (int) round( ( $benchmark_w / $orig_w ) * $orig_h );
+            $rec_dim_str = "{$rec_w} × {$rec_h} px";
+            $rec_text    = sprintf(
+                /* translators: %s: recommended resolution */
+                esc_html__( 'Scale down to %s', 'site-bloat-auditor' ),
+                $rec_dim_str
+            );
+            $badge_text  = $rec_text;
+            $badge_class = 'sba-pill-warning';
+            $category    = 'oversized';
+            $cat_label   = esc_html__( 'Needs Resize', 'site-bloat-auditor' );
+        } else {
+            $rec_w       = $orig_w;
+            $rec_h       = $orig_h;
+            $rec_dim_str = $orig_dim_str;
+            $rec_text    = esc_html__( 'Target dimensions reached — no further resizing needed.', 'site-bloat-auditor' );
+            $badge_text  = esc_html__( 'Web Optimized', 'site-bloat-auditor' );
+            $badge_class = 'sba-pill-active';
+            $category    = 'optimized';
+            $cat_label   = esc_html__( 'Optimized', 'site-bloat-auditor' );
+        }
+
         return [
-            'attachment_id' => $att_id,
-            'restored_size' => size_format( (int) $record['original_size'], 2 ),
-            'message'       => esc_html__( 'Original image and metadata restored successfully.', 'site-bloat-auditor' ),
+            'attachment_id'          => $att_id,
+            'restored_size'          => size_format( $orig_size, 2 ),
+            'restored_size_bytes'    => $orig_size,
+            'file_size_formatted'    => size_format( $orig_size, 2 ),
+            'file_size_bytes'        => $orig_size,
+            'width'                  => $orig_w,
+            'height'                 => $orig_h,
+            'current_width'          => $orig_w,
+            'current_height'         => $orig_h,
+            'current_dimensions'     => $orig_dim_str,
+            'restored_dimensions'    => $orig_dim_str,
+            'original_width'         => $orig_w,
+            'original_height'        => $orig_h,
+            'original_dimensions'    => $orig_dim_str,
+            'has_verified_orig_dim'  => ( $orig_w > 0 && $orig_h > 0 ),
+            'is_resized'             => false,
+            'target_reached'         => ! $is_oversized_again,
+            'recommendation_text'    => $rec_text,
+            'recommended_width'      => $rec_w,
+            'recommended_height'     => $rec_h,
+            'recommended_dim'        => $rec_dim_str,
+            'recommended_dimensions' => $rec_dim_str,
+            'has_backup'             => false,
+            'has_webp'               => false,
+            'is_oversized'           => $is_oversized_again,
+            'category'               => $category,
+            'category_label'         => $cat_label,
+            'recommendation_badge'   => $badge_text,
+            'badge_class'            => $badge_class,
+            'message'                => esc_html__( 'Original image and metadata restored successfully.', 'site-bloat-auditor' ),
         ];
+    }
+
+    /**
+     * Validate that a file on disk is a genuine, readable, and decodable WebP image.
+     * Verifies file existence, non-empty size, RIFF/WEBP magic bytes, MIME type, and image decodability.
+     *
+     * @param string $path Path to the WebP file.
+     * @return true|WP_Error True if valid WebP, WP_Error otherwise.
+     */
+    public function validate_webp_file( $path ) {
+        if ( empty( $path ) || ! file_exists( $path ) || ! $this->is_file_readable( $path ) ) {
+            return new WP_Error( 'missing_webp', esc_html__( 'WebP file does not exist or is unreadable on disk.', 'site-bloat-auditor' ) );
+        }
+
+        $size = (int) @filesize( $path );
+        if ( $size <= 0 ) {
+            return new WP_Error( 'empty_webp', esc_html__( 'WebP file is 0 bytes.', 'site-bloat-auditor' ) );
+        }
+
+        // 1. Inspect magic bytes: bytes 0..3 must be "RIFF" and bytes 8..11 must be "WEBP"
+        $fh = @fopen( $path, 'rb' );
+        if ( ! $fh ) {
+            return new WP_Error( 'unreadable_webp', esc_html__( 'Failed to open WebP file for header inspection.', 'site-bloat-auditor' ) );
+        }
+        $header = fread( $fh, 12 );
+        fclose( $fh );
+
+        if ( strlen( $header ) < 12 ) {
+            return new WP_Error( 'invalid_webp_header', esc_html__( 'WebP file header is too short.', 'site-bloat-auditor' ) );
+        }
+
+        $riff = substr( $header, 0, 4 );
+        $webp = substr( $header, 8, 4 );
+        if ( 'RIFF' !== $riff || 'WEBP' !== $webp ) {
+            return new WP_Error( 'not_a_webp', esc_html__( 'File header does not match WebP RIFF/WEBP magic bytes (file is not genuine WebP).', 'site-bloat-auditor' ) );
+        }
+
+        // 2. MIME type & dimension validation
+        $img_info = @getimagesize( $path );
+        if ( false === $img_info || empty( $img_info[0] ) || empty( $img_info[1] ) ) {
+            return new WP_Error( 'corrupt_webp', esc_html__( 'WebP image failed decoding verification (invalid dimensions).', 'site-bloat-auditor' ) );
+        }
+
+        $detected_mime = $img_info['mime'] ?? '';
+        if ( 'image/webp' !== $detected_mime ) {
+            return new WP_Error( 'invalid_webp_mime', sprintf(
+                /* translators: %s: detected MIME type */
+                esc_html__( 'Optimized file produced MIME type "%s", expected "image/webp".', 'site-bloat-auditor' ),
+                esc_html( $detected_mime )
+            ) );
+        }
+
+        // 3. Decoding verification via GD or Imagick
+        if ( function_exists( 'imagecreatefromwebp' ) ) {
+            $gd = @imagecreatefromwebp( $path );
+            if ( false === $gd ) {
+                return new WP_Error( 'webp_decode_failed', esc_html__( 'WebP image could not be decoded by GD imagecreatefromwebp.', 'site-bloat-auditor' ) );
+            }
+            imagedestroy( $gd );
+        } elseif ( class_exists( 'Imagick' ) ) {
+            try {
+                $im = new Imagick();
+                $im->pingImage( $path );
+                if ( strtoupper( $im->getImageFormat() ) !== 'WEBP' ) {
+                    $im->clear();
+                    $im->destroy();
+                    return new WP_Error( 'webp_decode_failed', esc_html__( 'WebP image could not be decoded by Imagick.', 'site-bloat-auditor' ) );
+                }
+                $im->clear();
+                $im->destroy();
+            } catch ( Exception $e ) {
+                return new WP_Error( 'webp_decode_failed', sprintf(
+                    /* translators: %s: error message */
+                    esc_html__( 'WebP image decoding failed: %s', 'site-bloat-auditor' ),
+                    esc_html( $e->getMessage() )
+                ) );
+            }
+        }
+
+        return true;
     }
 
     /**

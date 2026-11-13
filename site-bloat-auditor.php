@@ -23,6 +23,8 @@ define( 'SBA_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SBA_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // Load Modular Phase 1 Audit Engines
+require_once SBA_PLUGIN_DIR . 'includes/class-sba-image-reference-index.php';
+require_once SBA_PLUGIN_DIR . 'includes/class-sba-plugin-usage-detector.php';
 require_once SBA_PLUGIN_DIR . 'includes/class-sba-usage-detector.php';
 require_once SBA_PLUGIN_DIR . 'includes/class-sba-media-inventory.php';
 require_once SBA_PLUGIN_DIR . 'includes/class-sba-duplicate-detector.php';
@@ -85,11 +87,12 @@ function sba_admin_enqueue_scripts( $hook_suffix ) {
 
     // Dynamic Server Data & Localization Dictionary
     $localized_data = array(
-        'ajax_url'          => admin_url( 'admin-ajax.php' ),
-        'nonce'             => wp_create_nonce( 'sba_nonce' ),
-        'admin_plugins_url' => admin_url( 'plugins.php' ),
-        'quarantined_files' => array_values( (array) get_option( 'sba_quarantined_files', array() ) ),
-        'i18n'              => sba_get_admin_js_translations(),
+        'ajax_url'           => admin_url( 'admin-ajax.php' ),
+        'nonce'              => wp_create_nonce( 'sba_nonce' ),
+        'admin_plugins_url'  => admin_url( 'plugins.php' ),
+        'can_delete_plugins' => current_user_can( 'delete_plugins' ) && current_user_can( 'manage_options' ),
+        'quarantined_files'  => array_values( (array) get_option( 'sba_quarantined_files', array() ) ),
+        'i18n'               => sba_get_admin_js_translations(),
     );
 
     wp_localize_script( 'sba-admin-js', 'sbaData', $localized_data );
@@ -201,6 +204,19 @@ function sba_get_admin_js_translations() {
         'Missing Dependency'                                                                               => __( 'Missing Dependency', 'site-bloat-auditor' ),
         'Dependency Inactive'                                                                              => __( 'Dependency Inactive', 'site-bloat-auditor' ),
         'Local Plugin / Development'                                                                       => __( 'Local Plugin / Development', 'site-bloat-auditor' ),
+        'Theme Core Plugin'                                                                                => __( 'Theme Core Plugin', 'site-bloat-auditor' ),
+        'Theme Bundled Plugin'                                                                             => __( 'Theme Bundled Plugin', 'site-bloat-auditor' ),
+        'Verification Unavailable'                                                                         => __( 'Verification Unavailable', 'site-bloat-auditor' ),
+        'Required by Theme'                                                                                => __( 'Required by Theme', 'site-bloat-auditor' ),
+        'Select All Eligible Sizes'                                                                        => __( 'Select All Eligible Sizes', 'site-bloat-auditor' ),
+        'Protected thumbnail variation cannot be selected for deletion.'                                   => __( 'Protected thumbnail variation cannot be selected for deletion.', 'site-bloat-auditor' ),
+        'Delete Selected Sizes'                                                                            => __( 'Delete Selected Sizes', 'site-bloat-auditor' ),
+        'selected'                                                                                         => __( 'selected', 'site-bloat-auditor' ),
+        'Clear'                                                                                            => __( 'Clear', 'site-bloat-auditor' ),
+        'Are you sure you want to permanently delete the %d selected thumbnail variation(s)? Physical files will be removed from disk and metadata will be updated. (Note: thumbnails can be regenerated from the original file if needed later).' => __( 'Are you sure you want to permanently delete the %d selected thumbnail variation(s)? Physical files will be removed from disk and metadata will be updated. (Note: thumbnails can be regenerated from the original file if needed later).', 'site-bloat-auditor' ),
+        'Failed to delete selected thumbnail variations.'                                                  => __( 'Failed to delete selected thumbnail variations.', 'site-bloat-auditor' ),
+        'Server error while deleting selected thumbnail variations.'                                       => __( 'Server error while deleting selected thumbnail variations.', 'site-bloat-auditor' ),
+        'Selection unavailable'                                                                            => __( 'Selection unavailable', 'site-bloat-auditor' ),
         'Table'                                                                                            => __( 'Table', 'site-bloat-auditor' ),
         'Tables'                                                                                           => __( 'Tables', 'site-bloat-auditor' ),
         'Dismiss this notice.'                                                                             => __( 'Dismiss this notice.', 'site-bloat-auditor' ),
@@ -1138,12 +1154,12 @@ function sba_get_revisions_storage_stats() {
 
     // 1. Get revisions count and posts table bytes
     $posts_stats = $wpdb->get_row( $wpdb->prepare( "
-        SELECT 
+        SELECT
             COUNT(*) AS total_count,
             COALESCE(SUM(
-                COALESCE(LENGTH(post_content), 0) + 
-                COALESCE(LENGTH(post_title), 0) + 
-                COALESCE(LENGTH(post_excerpt), 0) + 
+                COALESCE(LENGTH(post_content), 0) +
+                COALESCE(LENGTH(post_title), 0) +
+                COALESCE(LENGTH(post_excerpt), 0) +
                 COALESCE(LENGTH(post_name), 0) +
                 COALESCE(LENGTH(to_ping), 0) +
                 COALESCE(LENGTH(pinged), 0) +
@@ -1174,8 +1190,8 @@ function sba_get_revisions_storage_stats() {
 
     if ( $total_count > 0 ) {
         $parent_posts = $wpdb->get_col( $wpdb->prepare( "
-            SELECT DISTINCT post_parent 
-            FROM {$wpdb->posts} 
+            SELECT DISTINCT post_parent
+            FROM {$wpdb->posts}
             WHERE post_type = %s AND post_parent > %d
         ", 'revision', 0 ) );
 
@@ -1184,9 +1200,9 @@ function sba_get_revisions_storage_stats() {
 
         foreach ( $parent_posts as $parent_id ) {
             $rev_ids = $wpdb->get_col( $wpdb->prepare( "
-                SELECT ID 
-                FROM {$wpdb->posts} 
-                WHERE post_type = 'revision' AND post_parent = %d 
+                SELECT ID
+                FROM {$wpdb->posts}
+                WHERE post_type = 'revision' AND post_parent = %d
                 ORDER BY ID DESC
             ", (int) $parent_id ) );
 
@@ -1196,9 +1212,9 @@ function sba_get_revisions_storage_stats() {
         }
 
         $orphaned_ids = $wpdb->get_col( $wpdb->prepare( "
-            SELECT r.ID 
-            FROM {$wpdb->posts} r 
-            LEFT JOIN {$wpdb->posts} p ON r.post_parent = p.ID 
+            SELECT r.ID
+            FROM {$wpdb->posts} r
+            LEFT JOIN {$wpdb->posts} p ON r.post_parent = p.ID
             WHERE r.post_type = %s AND (r.post_parent = %d OR p.ID IS NULL)
         ", 'revision', 0 ) );
 
@@ -1212,9 +1228,9 @@ function sba_get_revisions_storage_stats() {
 
                 $chunk_posts_bytes = (int) $wpdb->get_var( $wpdb->prepare( "
                     SELECT COALESCE(SUM(
-                        COALESCE(LENGTH(post_content), 0) + 
-                        COALESCE(LENGTH(post_title), 0) + 
-                        COALESCE(LENGTH(post_excerpt), 0) + 
+                        COALESCE(LENGTH(post_content), 0) +
+                        COALESCE(LENGTH(post_title), 0) +
+                        COALESCE(LENGTH(post_excerpt), 0) +
                         COALESCE(LENGTH(post_name), 0) +
                         COALESCE(LENGTH(to_ping), 0) +
                         COALESCE(LENGTH(pinged), 0) +
@@ -1264,9 +1280,9 @@ function sba_get_single_revision_bytes( $revision_id ) {
 
     $post_bytes = (int) $wpdb->get_var( $wpdb->prepare( "
         SELECT COALESCE(
-            COALESCE(LENGTH(post_content), 0) + 
-            COALESCE(LENGTH(post_title), 0) + 
-            COALESCE(LENGTH(post_excerpt), 0) + 
+            COALESCE(LENGTH(post_content), 0) +
+            COALESCE(LENGTH(post_title), 0) +
+            COALESCE(LENGTH(post_excerpt), 0) +
             COALESCE(LENGTH(post_name), 0) +
             COALESCE(LENGTH(to_ping), 0) +
             COALESCE(LENGTH(pinged), 0) +
@@ -1288,6 +1304,120 @@ function sba_get_single_revision_bytes( $revision_id ) {
 }
 
 /**
+ * Helper: Measure total database size in bytes for the current WordPress installation.
+ *
+ * @return int Total measured bytes (data_length + index_length) of WP tables.
+ */
+function sba_get_total_database_bytes() {
+    global $wpdb;
+
+    $prefix = ! empty( $wpdb->base_prefix ) ? $wpdb->base_prefix : $wpdb->prefix;
+    $total_bytes = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT SUM(data_length + index_length)
+         FROM information_schema.TABLES
+         WHERE table_schema = DATABASE()
+         AND table_name LIKE %s",
+        $wpdb->esc_like( $prefix ) . '%'
+    ) );
+
+    return max( 0, $total_bytes );
+}
+
+/**
+ * Helper: Calculate expired transients count and exact estimated bytes.
+ * Only rows confirmed to be past their expiration timestamp are counted.
+ *
+ * @return array ['count' => int, 'bytes' => int, 'kb' => float, 'fmt' => string]
+ */
+function sba_get_expired_transients_stats() {
+    global $wpdb;
+
+    $now = time();
+    $expired_timeout_rows = $wpdb->get_col( $wpdb->prepare(
+        "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s AND option_value < %d",
+        '_transient_timeout_%',
+        $now
+    ) );
+
+    $expired_count = count( $expired_timeout_rows );
+    $total_bytes   = 0;
+
+    if ( ! empty( $expired_timeout_rows ) ) {
+        $keys = [];
+        foreach ( $expired_timeout_rows as $name ) {
+            $keys[] = $name;
+            $keys[] = str_replace( '_transient_timeout_', '_transient_', $name );
+        }
+        $keys = array_unique( $keys );
+        $placeholders = implode( ',', array_fill( 0, count( $keys ), '%s' ) );
+        $total_bytes = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COALESCE(SUM(LENGTH(option_name) + LENGTH(option_value)), 0)
+             FROM {$wpdb->options}
+             WHERE option_name IN ($placeholders)",
+            ...$keys
+        ) );
+    }
+
+    // Multisite support for sitemeta transients
+    if ( is_multisite() && ! empty( $wpdb->sitemeta ) ) {
+        $expired_site_timeouts = $wpdb->get_col( $wpdb->prepare(
+            "SELECT meta_key FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s AND meta_value < %d",
+            '_site_transient_timeout_%',
+            $now
+        ) );
+        if ( ! empty( $expired_site_timeouts ) ) {
+            $site_keys = [];
+            foreach ( $expired_site_timeouts as $name ) {
+                $site_keys[] = $name;
+                $site_keys[] = str_replace( '_site_transient_timeout_', '_site_transient_', $name );
+            }
+            $site_keys = array_unique( $site_keys );
+            $site_placeholders = implode( ',', array_fill( 0, count( $site_keys ), '%s' ) );
+            $site_bytes = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COALESCE(SUM(LENGTH(meta_key) + LENGTH(meta_value)), 0)
+                 FROM {$wpdb->sitemeta}
+                 WHERE meta_key IN ($site_placeholders)",
+                ...$site_keys
+            ) );
+            $expired_count += count( $expired_site_timeouts );
+            $total_bytes   += $site_bytes;
+        }
+    }
+
+    return [
+        'count' => $expired_count,
+        'bytes' => $total_bytes,
+        'kb'    => round( $total_bytes / 1024, 2 ),
+        'fmt'   => size_format( $total_bytes, 2 ),
+    ];
+}
+
+/**
+ * Helper: Calculate autoload options statistics.
+ *
+ * @return array ['count' => int, 'bytes' => int, 'kb' => float, 'fmt' => string]
+ */
+function sba_get_autoload_stats() {
+    global $wpdb;
+
+    $autoload_query = $wpdb->get_row( $wpdb->prepare( "
+        SELECT
+            COUNT(*) as row_count,
+            SUM(LENGTH(option_value)) as total_bytes
+        FROM {$wpdb->options}
+        WHERE autoload IN (%s, %s)
+    ", 'yes', 'on' ) );
+
+    $bytes = (int) ( $autoload_query->total_bytes ?? 0 );
+    return [
+        'count' => (int) ( $autoload_query->row_count ?? 0 ),
+        'bytes' => $bytes,
+        'kb'    => round( $bytes / 1024, 2 ),
+        'fmt'   => size_format( $bytes, 2 ),
+    ];
+}
+
+/**
  * 3. Database Scan AJAX Endpoint
  */
 add_action( 'wp_ajax_sba_scan_database', 'sba_ajax_scan_database' );
@@ -1305,27 +1435,23 @@ function sba_ajax_scan_database() {
     global $wpdb;
 
     // 1. Calculate Autoload Options Size
-    $autoload_query = $wpdb->get_row( $wpdb->prepare( "
-        SELECT 
-            COUNT(*) as row_count, 
-            SUM(LENGTH(option_value)) as total_bytes 
-        FROM {$wpdb->options} 
-        WHERE autoload IN (%s, %s)
-    ", 'yes', 'on' ) );
-    $autoload_size_kb = round( ( $autoload_query->total_bytes ?? 0 ) / 1024, 2 );
+    $autoload_stats   = sba_get_autoload_stats();
+    $autoload_size_kb = $autoload_stats['kb'];
+    $autoload_count   = $autoload_stats['count'];
 
     // 2. Calculate Post Revisions Storage Bloat
     $revisions_stats = sba_get_revisions_storage_stats();
     $revisions_count = $revisions_stats['total_count'];
 
-    // 3. Count Expired Transients
-    $now = time();
-    $transients_count = (int) $wpdb->get_var( $wpdb->prepare( "
-        SELECT COUNT(*) FROM {$wpdb->options}
-        WHERE option_name LIKE %s AND option_value < %d
-    ", '_transient_timeout_%', $now ) );
+    // 3. Count Expired Transients (Confirmed expired only)
+    $transients_stats = sba_get_expired_transients_stats();
+    $transients_count = $transients_stats['count'];
+    $transients_bytes = $transients_stats['bytes'];
 
-    // 4. Inspect Tables & Classify: Core, Active Plugin, Orphaned
+    // 4. Measure Total Database Size
+    $db_total_bytes = sba_get_total_database_bytes();
+
+    // 5. Inspect Tables & Classify: Core, Active Plugin, Orphaned
     $all_plugins = function_exists( 'get_plugins' ) ? get_plugins() : [];
 
     // Comprehensive Active Plugin Detection
@@ -1546,6 +1672,7 @@ function sba_ajax_scan_database() {
         $tables_data[] = [
             'name'          => $table_name,
             'size_kb'       => (float) $table->size_kb,
+            'size_bytes'    => (int) round( (float) $table->size_kb * 1024 ),
             'row_count'     => (int) ( $table->row_count ?? 0 ),
             'status'        => $status, // 'core', 'active_plugin', 'orphaned'
             'source'        => $source,
@@ -1556,7 +1683,13 @@ function sba_ajax_scan_database() {
 
     $core_count          = count( array_filter( $tables_data, fn( $t ) => $t['status'] === 'core' ) );
     $active_plugin_count = count( array_filter( $tables_data, fn( $t ) => $t['status'] === 'active_plugin' ) );
-    $orphaned_count      = count( array_filter( $tables_data, fn( $t ) => $t['status'] === 'orphaned' ) );
+    $orphaned_tables     = array_filter( $tables_data, fn( $t ) => $t['status'] === 'orphaned' );
+    $orphaned_count      = count( $orphaned_tables );
+    $orphaned_bytes      = (int) round( array_sum( array_column( $orphaned_tables, 'size_kb' ) ) * 1024 );
+
+    // Conservative Recoverable Space: cleanable revisions + confirmed expired transients + orphaned tables
+    $recoverable_bytes    = (int) ( $revisions_stats['cleanable_bytes'] + $transients_bytes + $orphaned_bytes );
+    $eligible_items_count = (int) ( $revisions_stats['cleanable_count'] + $transients_count + $orphaned_count );
 
     // 5. Plugin Hygiene & Unused Analysis
     $custom_post_types     = get_post_types( [ '_builtin' => false ], 'names' );
@@ -1627,9 +1760,33 @@ function sba_ajax_scan_database() {
     $plugins_inactive_size_mb = round( array_sum( array_column( array_filter( $plugins_data, fn( $p ) => $p['status'] === 'inactive' ), 'size_mb' ) ), 2 );
     $plugins_total_size_mb    = round( array_sum( array_column( $plugins_data, 'size_mb' ) ), 2 );
 
+    $scan_timestamp = current_time( 'timestamp' );
+    $scan_time_fmt  = wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $scan_timestamp );
+
+    update_option( 'sba_last_db_scan', [
+        'timestamp'      => $scan_timestamp,
+        'time_fmt'       => $scan_time_fmt,
+        'status'         => 'complete',
+        'total_tables'   => count( $tables_data ),
+        'core_count'     => $core_count,
+        'active_count'   => $active_plugin_count,
+        'orphaned_count' => $orphaned_count,
+    ] );
+
     wp_send_json_success( [
+        'database_size_bytes'        => $db_total_bytes,
+        'database_size_fmt'          => size_format( $db_total_bytes, 2 ),
+        'recoverable_bytes'          => $recoverable_bytes,
+        'recoverable_fmt'            => size_format( $recoverable_bytes, 2 ),
+        'eligible_items_count'       => $eligible_items_count,
+        'scanned_at_fmt'             => $scan_time_fmt,
+        'scan_status'                => 'complete',
+        'transients_bytes'           => $transients_bytes,
+        'transients_fmt'             => size_format( $transients_bytes, 2 ),
+        'orphaned_bytes'             => $orphaned_bytes,
+        'orphaned_fmt'               => size_format( $orphaned_bytes, 2 ),
         'autoload_size_kb'           => $autoload_size_kb,
-        'autoload_count'             => (int) $autoload_query->row_count,
+        'autoload_count'             => $autoload_count,
         'revisions_count'            => $revisions_count,
         'revisions_bytes'            => $revisions_stats['total_bytes'],
         'revisions_size_kb'          => $revisions_stats['total_kb'],
@@ -1639,18 +1796,18 @@ function sba_ajax_scan_database() {
         'revisions_cleanable_bytes'  => $revisions_stats['cleanable_bytes'],
         'revisions_cleanable_kb'     => $revisions_stats['cleanable_kb'],
         'transients_count'           => $transients_count,
-        'total_tables'             => count( $tables_data ),
-        'core_count'               => $core_count,
-        'active_plugin_count'      => $active_plugin_count,
-        'orphaned_count'           => $orphaned_count,
-        'tables'                   => $tables_data,
-        'plugins'                  => $plugins_data,
-        'plugins_total'            => $plugins_total,
-        'plugins_active_count'     => $plugins_active_count,
-        'plugins_inactive_count'   => $plugins_inactive_count,
-        'plugins_unused_count'     => $plugins_unused_count,
-        'plugins_inactive_size_mb' => $plugins_inactive_size_mb,
-        'plugins_total_size_mb'    => $plugins_total_size_mb,
+        'total_tables'               => count( $tables_data ),
+        'core_count'                 => $core_count,
+        'active_plugin_count'        => $active_plugin_count,
+        'orphaned_count'             => $orphaned_count,
+        'tables'                     => $tables_data,
+        'plugins'                    => $plugins_data,
+        'plugins_total'              => $plugins_total,
+        'plugins_active_count'       => $plugins_active_count,
+        'plugins_inactive_count'     => $plugins_inactive_count,
+        'plugins_unused_count'       => $plugins_unused_count,
+        'plugins_inactive_size_mb'   => $plugins_inactive_size_mb,
+        'plugins_total_size_mb'      => $plugins_total_size_mb,
     ] );
 }
 
@@ -1796,6 +1953,16 @@ function sba_ajax_drop_table() {
         wp_send_json_error( esc_html__( 'Cannot drop table: This table is protected.', 'site-bloat-auditor' ) );
     }
 
+    // Measure table size and rows before dropping
+    $table_info = $wpdb->get_row( $wpdb->prepare(
+        "SELECT TABLE_ROWS as row_count, (data_length + index_length) as size_bytes
+         FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s",
+        $safe_table
+    ) );
+    $row_count  = (int) ( $table_info->row_count ?? 0 );
+    $size_bytes = (int) ( $table_info->size_bytes ?? 0 );
+
     // Safely execute DROP TABLE using whitelisted identifier
     // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $safe_table is whitelisted against information_schema.TABLES.
     $dropped = $wpdb->query( "DROP TABLE `{$safe_table}`" );
@@ -1804,9 +1971,25 @@ function sba_ajax_drop_table() {
         wp_send_json_error( esc_html__( 'Failed to drop table. Please check database user privileges.', 'site-bloat-auditor' ) );
     }
 
+    $new_db_bytes = sba_get_total_database_bytes();
+
     wp_send_json_success( [
-        'message'    => sprintf( esc_html__( 'Table `%s` was successfully dropped.', 'site-bloat-auditor' ), esc_html( $safe_table ) ),
-        'table_name' => $safe_table,
+        'message'             => sprintf(
+            /* translators: 1: table name, 2: formatted freed space */
+            esc_html__( 'Table `%1$s` was successfully dropped. Space recovered: %2$s.', 'site-bloat-auditor' ),
+            esc_html( $safe_table ),
+            size_format( $size_bytes, 2 )
+        ),
+        'table_name'          => $safe_table,
+        'deleted_count'       => 1,
+        'rows_deleted'        => $row_count,
+        'freed_bytes'         => $size_bytes,
+        'freed_fmt'           => size_format( $size_bytes, 2 ),
+        'is_estimated'        => false,
+        'database_size_bytes' => $new_db_bytes,
+        'database_size_fmt'   => size_format( $new_db_bytes, 2 ),
+        'errors'              => 0,
+        'skipped'             => 0,
     ] );
 }
 
@@ -2243,6 +2426,7 @@ function sba_ajax_clean_transients() {
     ) );
 
     $deleted_count = 0;
+    $freed_bytes   = 0;
 
     if ( ! empty( $expired_timeouts ) ) {
         $keys_to_delete = [];
@@ -2256,6 +2440,12 @@ function sba_ajax_clean_transients() {
 
         foreach ( $chunks as $chunk ) {
             $placeholders = implode( ',', array_fill( 0, count( $chunk ), '%s' ) );
+            $chunk_bytes  = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COALESCE(SUM(LENGTH(option_name) + LENGTH(option_value)), 0) FROM {$wpdb->options} WHERE option_name IN ($placeholders)",
+                ...$chunk
+            ) );
+            $freed_bytes += $chunk_bytes;
+
             $result       = $wpdb->query( $wpdb->prepare(
                 "DELETE FROM {$wpdb->options} WHERE option_name IN ($placeholders)",
                 ...$chunk
@@ -2286,6 +2476,12 @@ function sba_ajax_clean_transients() {
 
             foreach ( $site_chunks as $chunk ) {
                 $placeholders = implode( ',', array_fill( 0, count( $chunk ), '%s' ) );
+                $chunk_bytes  = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COALESCE(SUM(LENGTH(meta_key) + LENGTH(meta_value)), 0) FROM {$wpdb->sitemeta} WHERE meta_key IN ($placeholders)",
+                    ...$chunk
+                ) );
+                $freed_bytes += $chunk_bytes;
+
                 $result       = $wpdb->query( $wpdb->prepare(
                     "DELETE FROM {$wpdb->sitemeta} WHERE meta_key IN ($placeholders)",
                     ...$chunk
@@ -2304,13 +2500,30 @@ function sba_ajax_clean_transients() {
         $now
     ) );
 
+    // Count protected active transients
+    $active_transients = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE %s AND option_value >= %d",
+        '_transient_timeout_%',
+        $now
+    ) );
+
+    $new_db_bytes = sba_get_total_database_bytes();
+
     wp_send_json_success( [
         'deleted_count'        => $deleted_count,
         'remaining_transients' => $remaining_transients,
+        'freed_bytes'          => $freed_bytes,
+        'freed_fmt'            => size_format( $freed_bytes, 2 ),
+        'is_estimated'         => true,
+        'database_size_bytes'  => $new_db_bytes,
+        'database_size_fmt'    => size_format( $new_db_bytes, 2 ),
+        'errors'               => 0,
+        'skipped'              => $active_transients,
         'message'              => sprintf(
-            /* translators: %d: count of deleted transient records */
-            esc_html__( 'Successfully purged %d expired transient rows from the database.', 'site-bloat-auditor' ),
-            $deleted_count
+            /* translators: 1: count of deleted records, 2: formatted freed space */
+            esc_html__( 'Successfully purged %1$d expired temporary data rows from the database. Estimated space freed inside database pages: %2$s. (Note: in MySQL InnoDB, row deletion marks space for immediate reuse; physical disk file shrinkage requires table defragmentation/OPTIMIZE).', 'site-bloat-auditor' ),
+            $deleted_count,
+            size_format( $freed_bytes, 2 )
         ),
     ] );
 }
@@ -2333,8 +2546,8 @@ function sba_ajax_clean_revisions() {
 
     // Get all parent posts that have revisions
     $parent_posts = $wpdb->get_col( $wpdb->prepare( "
-        SELECT DISTINCT post_parent 
-        FROM {$wpdb->posts} 
+        SELECT DISTINCT post_parent
+        FROM {$wpdb->posts}
         WHERE post_type = %s AND post_parent > %d
     ", 'revision', 0 ) );
 
@@ -2344,9 +2557,9 @@ function sba_ajax_clean_revisions() {
         $parent_id = (int) $parent_id;
         // Fetch all revision IDs for this post, ordered newest to oldest
         $revisions = $wpdb->get_col( $wpdb->prepare( "
-            SELECT ID 
-            FROM {$wpdb->posts} 
-            WHERE post_type = 'revision' AND post_parent = %d 
+            SELECT ID
+            FROM {$wpdb->posts}
+            WHERE post_type = 'revision' AND post_parent = %d
             ORDER BY ID DESC
         ", $parent_id ) );
 
@@ -2361,9 +2574,9 @@ function sba_ajax_clean_revisions() {
 
     // Also pick up any orphaned revisions with post_parent = 0 or non-existent parent
     $orphaned_revisions = $wpdb->get_col( $wpdb->prepare( "
-        SELECT r.ID 
-        FROM {$wpdb->posts} r 
-        LEFT JOIN {$wpdb->posts} p ON r.post_parent = p.ID 
+        SELECT r.ID
+        FROM {$wpdb->posts} r
+        LEFT JOIN {$wpdb->posts} p ON r.post_parent = p.ID
         WHERE r.post_type = %s AND (r.post_parent = %d OR p.ID IS NULL)
     ", 'revision', 0 ) );
 
@@ -2375,11 +2588,33 @@ function sba_ajax_clean_revisions() {
 
     $revision_ids_to_delete = array_unique( $revision_ids_to_delete );
     $deleted_count          = 0;
+    $freed_bytes            = 0;
 
     if ( ! empty( $revision_ids_to_delete ) ) {
         $chunks = array_chunk( $revision_ids_to_delete, 100 );
         foreach ( $chunks as $chunk ) {
             $placeholders = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+
+            // Measure bytes being freed from wp_posts and wp_postmeta
+            $chunk_post_b = (int) $wpdb->get_var( $wpdb->prepare( "
+                SELECT COALESCE(SUM(
+                    COALESCE(LENGTH(post_content), 0) +
+                    COALESCE(LENGTH(post_title), 0) +
+                    COALESCE(LENGTH(post_excerpt), 0) +
+                    COALESCE(LENGTH(post_name), 0) +
+                    COALESCE(LENGTH(to_ping), 0) +
+                    COALESCE(LENGTH(pinged), 0) +
+                    COALESCE(LENGTH(post_content_filtered), 0) +
+                    COALESCE(LENGTH(guid), 0)
+                ), 0) FROM {$wpdb->posts} WHERE ID IN ($placeholders) AND post_type = 'revision'
+            ", ...$chunk ) );
+
+            $chunk_meta_b = (int) $wpdb->get_var( $wpdb->prepare( "
+                SELECT COALESCE(SUM(LENGTH(meta_key) + LENGTH(meta_value)), 0)
+                FROM {$wpdb->postmeta} WHERE post_id IN ($placeholders)
+            ", ...$chunk ) );
+
+            $freed_bytes += ( $chunk_post_b + $chunk_meta_b );
 
             // 1. Delete associated postmeta
             $wpdb->query( $wpdb->prepare(
@@ -2407,15 +2642,24 @@ function sba_ajax_clean_revisions() {
 
     // Recalculate remaining revisions & storage stats
     $updated_stats = sba_get_revisions_storage_stats();
+    $new_db_bytes  = sba_get_total_database_bytes();
 
     wp_send_json_success( [
         'deleted_count'       => $deleted_count,
         'remaining_revisions' => $updated_stats['total_count'],
+        'freed_bytes'         => $freed_bytes,
+        'freed_fmt'           => size_format( $freed_bytes, 2 ),
+        'is_estimated'        => true,
+        'database_size_bytes' => $new_db_bytes,
+        'database_size_fmt'   => size_format( $new_db_bytes, 2 ),
         'stats'               => $updated_stats,
+        'errors'              => 0,
+        'skipped'             => $updated_stats['total_count'],
         'message'             => sprintf(
-            /* translators: %d: count of deleted revisions */
-            esc_html__( 'Successfully cleaned %d post revision rows (preserved last 3 edits per post).', 'site-bloat-auditor' ),
-            $deleted_count
+            /* translators: 1: count of deleted revisions, 2: formatted freed space */
+            esc_html__( 'Successfully cleaned %1$d old content version records (preserved the 3 most recent edits per post). Estimated space freed inside database pages: %2$s.', 'site-bloat-auditor' ),
+            $deleted_count,
+            size_format( $freed_bytes, 2 )
         ),
     ] );
 }
@@ -2434,7 +2678,7 @@ function sba_ajax_get_post_revisions() {
     global $wpdb;
 
     $raw_revisions = $wpdb->get_results( $wpdb->prepare( "
-        SELECT 
+        SELECT
             p.ID,
             p.post_parent,
             p.post_title,
@@ -2444,9 +2688,9 @@ function sba_ajax_get_post_revisions() {
             parent.post_title AS parent_title,
             parent.post_type AS parent_type,
             (
-                COALESCE(LENGTH(p.post_content), 0) + 
-                COALESCE(LENGTH(p.post_title), 0) + 
-                COALESCE(LENGTH(p.post_excerpt), 0) + 
+                COALESCE(LENGTH(p.post_content), 0) +
+                COALESCE(LENGTH(p.post_title), 0) +
+                COALESCE(LENGTH(p.post_excerpt), 0) +
                 COALESCE(LENGTH(p.post_name), 0) +
                 COALESCE(LENGTH(p.to_ping), 0) +
                 COALESCE(LENGTH(p.pinged), 0) +
@@ -2494,8 +2738,8 @@ function sba_ajax_get_post_revisions() {
 
         $parent_title = ! empty( $rev->parent_title ) ? $rev->parent_title : '';
         if ( empty( $parent_title ) ) {
-            $parent_title = $rev->post_parent > 0 
-                ? sprintf( __( 'Parent Post #%d (Untitled)', 'site-bloat-auditor' ), $rev->post_parent ) 
+            $parent_title = $rev->post_parent > 0
+                ? sprintf( __( 'Parent Post #%d (Untitled)', 'site-bloat-auditor' ), $rev->post_parent )
                 : __( '(Orphaned / No Parent)', 'site-bloat-auditor' );
         }
 
@@ -2574,15 +2818,24 @@ function sba_ajax_delete_single_revision() {
 
     // Recalculate remaining stats
     $updated_stats = sba_get_revisions_storage_stats();
+    $new_db_bytes  = sba_get_total_database_bytes();
 
     wp_send_json_success( [
-        'deleted_id'       => $revision_id,
-        'bytes_released'   => $bytes_released,
-        'size_kb_released' => round( $bytes_released / 1024, 2 ),
-        'stats'            => $updated_stats,
-        'message'          => sprintf(
+        'deleted_id'          => $revision_id,
+        'deleted_count'       => 1,
+        'bytes_released'      => $bytes_released,
+        'freed_bytes'         => $bytes_released,
+        'freed_fmt'           => size_format( $bytes_released, 2 ),
+        'size_kb_released'    => round( $bytes_released / 1024, 2 ),
+        'is_estimated'        => true,
+        'database_size_bytes' => $new_db_bytes,
+        'database_size_fmt'   => size_format( $new_db_bytes, 2 ),
+        'stats'               => $updated_stats,
+        'errors'              => 0,
+        'skipped'             => 0,
+        'message'             => sprintf(
             /* translators: 1: revision ID, 2: bytes released, 3: KB released */
-            esc_html__( 'Revision #%1$d deleted successfully. Released %2$s bytes (%3$s KB).', 'site-bloat-auditor' ),
+            esc_html__( 'Revision #%1$d deleted successfully. Estimated space freed inside database pages: %2$s (%3$s KB).', 'site-bloat-auditor' ),
             $revision_id,
             number_format( $bytes_released ),
             round( $bytes_released / 1024, 2 )
@@ -2620,9 +2873,9 @@ function sba_ajax_delete_bulk_revisions() {
         // Calculate bytes released
         $posts_bytes = (int) $wpdb->get_var( $wpdb->prepare( "
             SELECT COALESCE(SUM(
-                COALESCE(LENGTH(post_content), 0) + 
-                COALESCE(LENGTH(post_title), 0) + 
-                COALESCE(LENGTH(post_excerpt), 0) + 
+                COALESCE(LENGTH(post_content), 0) +
+                COALESCE(LENGTH(post_title), 0) +
+                COALESCE(LENGTH(post_excerpt), 0) +
                 COALESCE(LENGTH(post_name), 0) +
                 COALESCE(LENGTH(to_ping), 0) +
                 COALESCE(LENGTH(pinged), 0) +
@@ -2669,15 +2922,23 @@ function sba_ajax_delete_bulk_revisions() {
     }
 
     $updated_stats = sba_get_revisions_storage_stats();
+    $new_db_bytes  = sba_get_total_database_bytes();
 
     wp_send_json_success( [
-        'deleted_count'    => $deleted_count,
-        'bytes_released'   => $total_bytes_released,
-        'size_kb_released' => round( $total_bytes_released / 1024, 2 ),
-        'stats'            => $updated_stats,
-        'message'          => sprintf(
+        'deleted_count'       => $deleted_count,
+        'bytes_released'      => $total_bytes_released,
+        'freed_bytes'         => $total_bytes_released,
+        'freed_fmt'           => size_format( $total_bytes_released, 2 ),
+        'size_kb_released'    => round( $total_bytes_released / 1024, 2 ),
+        'is_estimated'        => true,
+        'database_size_bytes' => $new_db_bytes,
+        'database_size_fmt'   => size_format( $new_db_bytes, 2 ),
+        'stats'               => $updated_stats,
+        'errors'              => 0,
+        'skipped'             => 0,
+        'message'             => sprintf(
             /* translators: 1: count, 2: bytes, 3: KB */
-            esc_html__( 'Successfully deleted %1$d revision(s). Released %2$s bytes (%3$s KB).', 'site-bloat-auditor' ),
+            esc_html__( 'Successfully deleted %1$d revision(s). Estimated space freed inside database pages: %2$s (%3$s KB).', 'site-bloat-auditor' ),
             $deleted_count,
             number_format( $total_bytes_released ),
             round( $total_bytes_released / 1024, 2 )
@@ -3166,24 +3427,36 @@ function sba_ajax_scan_media_files() {
         $opt_analysis = $optimizer->analyze_image( $att_id, $meta, $is_hero );
         $is_oversized = $opt_analysis['is_oversized'];
         $has_backup   = isset( $backups_map[ $att_id ] );
+        $backup_item  = $has_backup ? $backups_map[ $att_id ] : null;
 
-        // Determine item category
+        // Determine item category and recommendation badge
         if ( ! $is_used ) {
-            $category   = 'unused';
-            $badge_text = esc_html__( 'Review & Quarantine', 'site-bloat-auditor' );
+            $category    = 'unused';
+            $badge_class = 'sba-pill-orphaned';
+            $badge_text  = esc_html__( 'Review & Quarantine', 'site-bloat-auditor' );
         } elseif ( $is_oversized ) {
             $category    = 'oversized';
             $badge_class = 'sba-pill-warning';
-            $badge_text  = sprintf(
-                /* translators: %s: recommended resolution */
-                esc_html__( 'Scale down to %s', 'site-bloat-auditor' ),
-                $opt_analysis['recommended_dim']
-            );
+            $badge_text  = $opt_analysis['recommendation_text'];
         } else {
             $category    = 'optimized';
             $badge_class = 'sba-pill-active';
-            $badge_text  = esc_html__( 'Web Optimized', 'site-bloat-auditor' );
+            if ( ! empty( $opt_analysis['has_webp'] ) ) {
+                $badge_text = esc_html__( 'Web Optimized (WebP)', 'site-bloat-auditor' );
+            } elseif ( ! empty( $opt_analysis['is_resized'] ) || $has_backup ) {
+                $badge_text = esc_html__( 'Target Dimensions Reached', 'site-bloat-auditor' );
+            } else {
+                $badge_text = esc_html__( 'Web Optimized', 'site-bloat-auditor' );
+            }
         }
+
+        // Optimization history and actual savings
+        $orig_size_bytes  = ( $has_backup && isset( $backup_item['original_size'] ) ) ? (int) $backup_item['original_size'] : (int) $inv_item['total_item_bytes'];
+        $orig_size_fmt    = ( $has_backup && isset( $backup_item['original_size'] ) ) ? size_format( (int) $backup_item['original_size'], 2 ) : $inv_item['total_size_formatted'];
+        $curr_size_bytes  = (int) $inv_item['total_item_bytes'];
+        $actual_saved_b   = ( $has_backup && $orig_size_bytes > $curr_size_bytes ) ? ( $orig_size_bytes - $curr_size_bytes ) : ( ( $has_backup && isset( $backup_item['freed_bytes'] ) ) ? (int) $backup_item['freed_bytes'] : 0 );
+        $actual_saved_pct = ( $orig_size_bytes > 0 && $actual_saved_b > 0 ) ? round( ( $actual_saved_b / $orig_size_bytes ) * 100, 1 ) : 0;
+        $actual_saved_fmt = size_format( $actual_saved_b, 2 );
 
         // Preview URL
         $preview_url = wp_get_attachment_image_url( $att_id, 'thumbnail' );
@@ -3199,31 +3472,91 @@ function sba_ajax_scan_media_files() {
         $core_admin_keys        = [ 'thumbnail', '1536x1536', '2048x2048' ];
         $registered_theme_sizes = function_exists( 'wp_get_registered_image_subsizes' ) ? wp_get_registered_image_subsizes() : [];
         $item_subsizes          = [];
+        $ref_engine             = SBA_Image_Reference_Index::get_instance();
+        $att_file_path          = get_attached_file( $att_id );
+        $file_dir               = $att_file_path ? dirname( $att_file_path ) : '';
+        $upload_dir             = wp_upload_dir();
+        $basedir                = wp_normalize_path( $upload_dir['basedir'] );
 
         foreach ( $inv_item['subsizes'] as $sub ) {
-            $size_key = $sub['size_key'];
-            if ( in_array( $size_key, $responsive_keys, true ) ) {
+            $size_key   = $sub['size_key'];
+            $sub_file   = $sub['file'];
+            $sub_path   = $file_dir ? wp_normalize_path( $file_dir . '/' . $sub_file ) : '';
+            $sub_rel    = ( $sub_path && 0 === strpos( $sub_path, $basedir ) ) ? ltrim( substr( $sub_path, strlen( $basedir ) ), '/' ) : '';
+            $sub_url    = wp_get_attachment_image_url( $att_id, $size_key ) ?: ( wp_get_attachment_url( $att_id ) ? dirname( wp_get_attachment_url( $att_id ) ) . '/' . $sub_file : '' );
+
+            // Check universal reference index for this specific generated thumbnail variation
+            $sub_usage = $ref_engine->check_thumbnail_usage( $sub_file, $sub_rel, $sub_url, $att_id, $size_key );
+
+            if ( $sub_usage['found'] ) {
+                $ref               = $sub_usage['primary'];
+                $sub_status        = 'in_use_protected';
+                $sub_note          = sprintf( esc_html__( 'In Use — Protected: Detected in "%1$s" (Source: %2$s, Match: %3$s)', 'site-bloat-auditor' ), $ref['source_title'], $ref['detection_method'], $ref['match_type'] );
+                $is_sub_protected  = true;
+                $usage_detected    = true;
+                $usage_location    = $ref['source_title'];
+                $usage_source      = $ref['detection_method'];
+                $usage_match       = $ref['match_type'];
+            } elseif ( ! empty( $sub_usage['is_incomplete'] ) ) {
+                $sub_status        = 'unknown_unverified';
+                $sub_note          = esc_html__( 'Unknown — Needs Verification: Scan incomplete. Pruning blocked for safety.', 'site-bloat-auditor' );
+                $is_sub_protected  = true;
+                $usage_detected    = false;
+                $usage_location    = '';
+                $usage_source      = '';
+                $usage_match       = '';
+            } elseif ( in_array( $size_key, $responsive_keys, true ) ) {
                 if ( $is_used ) {
-                    $sub_status = 'protected_responsive';
-                    $sub_note   = esc_html__( 'Used by mobile/tablet responsive srcset', 'site-bloat-auditor' );
+                    $sub_status        = 'protected_responsive';
+                    $sub_note          = esc_html__( 'Used by mobile/tablet responsive srcset', 'site-bloat-auditor' );
+                    $is_sub_protected  = true;
+                    $usage_detected    = false;
+                    $usage_location    = '';
+                    $usage_source      = '';
+                    $usage_match       = '';
                 } else {
-                    $sub_status = 'unreferenced_responsive';
-                    $sub_note   = esc_html__( 'Responsive srcset variant. Parent media has no references in scanned content; review before pruning.', 'site-bloat-auditor' );
+                    $sub_status        = 'unreferenced_responsive';
+                    $sub_note          = esc_html__( 'Responsive srcset variant. Parent media has no references in scanned content; review before pruning.', 'site-bloat-auditor' );
+                    $is_sub_protected  = false;
+                    $usage_detected    = false;
+                    $usage_location    = '';
+                    $usage_source      = '';
+                    $usage_match       = '';
                 }
             } elseif ( in_array( $size_key, $core_admin_keys, true ) ) {
-                $sub_status = 'core_standard_size';
-                $sub_note   = esc_html__( 'Standard WordPress size (used in admin or media lists); review before pruning.', 'site-bloat-auditor' );
+                $sub_status        = 'core_standard_size';
+                $sub_note          = esc_html__( 'Standard WordPress size (used in admin or media lists); review before pruning.', 'site-bloat-auditor' );
+                $is_sub_protected  = false;
+                $usage_detected    = false;
+                $usage_location    = '';
+                $usage_source      = '';
+                $usage_match       = '';
             } elseif ( isset( $registered_theme_sizes[ $size_key ] ) ) {
-                $sub_status = 'unverified_template_usage';
-                $sub_note   = esc_html__( 'Registered by active theme/plugin. Template usage cannot be verified via post content alone; review before pruning.', 'site-bloat-auditor' );
+                $sub_status        = 'unverified_template_usage';
+                $sub_note          = esc_html__( 'Registered by active theme/plugin. Template usage cannot be verified via post content alone; review before pruning.', 'site-bloat-auditor' );
+                $is_sub_protected  = false;
+                $usage_detected    = false;
+                $usage_location    = '';
+                $usage_source      = '';
+                $usage_match       = '';
             } else {
-                $sub_status = 'potential_unused';
-                $sub_note   = esc_html__( 'Legacy/unregistered image size not defined in current theme or active plugins. Candidate for cleanup (regenerable if needed).', 'site-bloat-auditor' );
+                $sub_status        = 'unused_eligible';
+                $sub_note          = esc_html__( 'Unused — Eligible for Deletion: No references detected across website content, templates, or responsive srcset.', 'site-bloat-auditor' );
+                $is_sub_protected  = false;
+                $usage_detected    = false;
+                $usage_location    = '';
+                $usage_source      = '';
+                $usage_match       = '';
             }
 
             $item_subsizes[] = array_merge( $sub, [
-                'status' => $sub_status,
-                'note'   => $sub_note,
+                'status'         => $sub_status,
+                'note'           => $sub_note,
+                'is_protected'   => $is_sub_protected,
+                'usage_detected' => $usage_detected,
+                'usage_location' => $usage_location,
+                'usage_source'   => $usage_source,
+                'usage_match'    => $usage_match,
             ] );
         }
 
@@ -3234,17 +3567,31 @@ function sba_ajax_scan_media_files() {
             'relative_path'               => sanitize_text_field( $rel_path ),
             'file_path'                   => sanitize_text_field( $display_path ),
             'preview_url'                 => esc_url_raw( $preview_url ),
+            'full_url'                    => esc_url_raw( wp_get_attachment_url( $att_id ) ?: $preview_url ),
             'category'                    => $category,
             'category_label'              => $category_label,
             'classification'              => $classification,
             'original_width'              => $opt_analysis['original_width'],
             'original_height'             => $opt_analysis['original_height'],
-            'original_dimensions'         => $opt_analysis['original_dim'],
+            'original_dimensions'         => $opt_analysis['original_dimensions'],
+            'has_verified_orig_dim'       => $opt_analysis['has_verified_orig_dim'],
+            'current_width'               => $opt_analysis['current_width'],
+            'current_height'              => $opt_analysis['current_height'],
+            'current_dimensions'          => $opt_analysis['current_dimensions'],
+            'is_resized'                  => $opt_analysis['is_resized'],
+            'target_reached'              => $opt_analysis['target_reached'],
+            'recommendation_text'         => $opt_analysis['recommendation_text'],
             'recommended_width'           => $opt_analysis['recommended_width'],
             'recommended_height'          => $opt_analysis['recommended_height'],
-            'recommended_dimensions'      => $opt_analysis['recommended_dim'],
+            'recommended_dimensions'      => $opt_analysis['recommended_dimensions'],
             'is_oversized'                => $is_oversized,
             'has_backup'                  => $has_backup,
+            'has_webp'                    => $opt_analysis['has_webp'],
+            'saved_bytes'                 => $actual_saved_b,
+            'saved_bytes_formatted'       => $actual_saved_fmt,
+            'savings_percent'             => $actual_saved_pct,
+            'original_size_bytes'         => $orig_size_bytes,
+            'original_size_formatted'     => $orig_size_fmt,
             'file_size_bytes'             => $inv_item['total_item_bytes'],
             'file_size_formatted'         => $inv_item['total_size_formatted'],
             'estimated_size_bytes'        => $opt_analysis['estimated_size_bytes'],
@@ -3415,22 +3762,114 @@ function sba_ajax_optimize_image() {
         wp_send_json_error( esc_html__( 'Invalid attachment ID.', 'site-bloat-auditor' ) );
     }
 
-    $optimizer = new SBA_Image_Optimizer();
-    $max_w     = isset( $_POST['max_width'] ) ? absint( $_POST['max_width'] ) : 1920;
-    $max_h     = isset( $_POST['max_height'] ) ? absint( $_POST['max_height'] ) : 1080;
-    $quality   = isset( $_POST['quality'] ) ? absint( $_POST['quality'] ) : 82;
+    $res = null;
+    try {
+        $optimizer = new SBA_Image_Optimizer();
+        $max_w     = isset( $_POST['max_width'] ) ? absint( $_POST['max_width'] ) : 1920;
+        $max_h     = isset( $_POST['max_height'] ) ? absint( $_POST['max_height'] ) : 1080;
+        $quality   = isset( $_POST['quality'] ) ? absint( $_POST['quality'] ) : 82;
 
-    $res = $optimizer->optimize_attachment( $attachment_id, [
-        'max_width'  => $max_w,
-        'max_height' => $max_h,
-        'quality'    => $quality,
-    ] );
+        $res = $optimizer->optimize_attachment( $attachment_id, [
+            'max_width'  => $max_w,
+            'max_height' => $max_h,
+            'quality'    => $quality,
+        ] );
+    } catch ( Throwable $t ) {
+        if ( is_a( $t, 'WP_DieException' ) || strpos( get_class( $t ), 'Die' ) !== false ) {
+            throw $t;
+        }
+        if ( ob_get_length() ) {
+            ob_clean();
+        }
+        wp_send_json_error( sprintf(
+            /* translators: %s: error message */
+            esc_html__( 'Unexpected error during image optimization: %s', 'site-bloat-auditor' ),
+            $t->getMessage()
+        ) );
+    }
 
     if ( is_wp_error( $res ) ) {
+        if ( ob_get_length() ) {
+            ob_clean();
+        }
         wp_send_json_error( $res->get_error_message() );
     }
 
+    if ( ob_get_length() ) {
+        ob_clean();
+    }
+
     wp_send_json_success( $res );
+}
+
+/**
+ * 11c. Bulk Image Optimization AJAX Action: Optimize multiple selected images with safe original backup.
+ */
+add_action( 'wp_ajax_sba_bulk_optimize_media', 'sba_ajax_bulk_optimize_media' );
+function sba_ajax_bulk_optimize_media() {
+    check_ajax_referer( 'sba_nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( esc_html__( 'Unauthorized permission.', 'site-bloat-auditor' ) );
+    }
+
+    $raw_ids = ! empty( $_POST['attachment_ids'] ) ? (array) $_POST['attachment_ids'] : ( ! empty( $_POST['attachment_id'] ) ? [ $_POST['attachment_id'] ] : [] );
+    $attachment_ids = array_filter( array_map( 'absint', $raw_ids ) );
+    if ( empty( $attachment_ids ) ) {
+        wp_send_json_error( esc_html__( 'Invalid or empty attachment IDs.', 'site-bloat-auditor' ) );
+    }
+
+    $max_w   = isset( $_POST['max_width'] ) ? absint( $_POST['max_width'] ) : 1920;
+    $max_h   = isset( $_POST['max_height'] ) ? absint( $_POST['max_height'] ) : 1080;
+    $quality = isset( $_POST['quality'] ) ? absint( $_POST['quality'] ) : 82;
+
+    $optimizer = new SBA_Image_Optimizer();
+    $results   = [];
+    $succeeded = 0;
+    $failed    = 0;
+    $total_saved = 0;
+
+    foreach ( $attachment_ids as $id ) {
+        try {
+            $res = $optimizer->optimize_attachment( $id, [
+                'max_width'  => $max_w,
+                'max_height' => $max_h,
+                'quality'    => $quality,
+            ] );
+
+            if ( is_wp_error( $res ) ) {
+                $failed++;
+                $results[ $id ] = [
+                    'success' => false,
+                    'error'   => $res->get_error_message(),
+                ];
+            } else {
+                $succeeded++;
+                $saved_bytes = isset( $res['freed_bytes'] ) ? (int) $res['freed_bytes'] : ( isset( $res['saved_bytes'] ) ? (int) $res['saved_bytes'] : 0 );
+                $total_saved += $saved_bytes;
+                $results[ $id ] = [
+                    'success'     => true,
+                    'data'        => $res,
+                    'saved_bytes' => $saved_bytes,
+                ];
+            }
+        } catch ( Throwable $t ) {
+            $failed++;
+            $results[ $id ] = [
+                'success' => false,
+                'error'   => $t->getMessage(),
+            ];
+        }
+    }
+
+    wp_send_json_success( [
+        'total'           => count( $attachment_ids ),
+        'succeeded'       => $succeeded,
+        'failed'          => $failed,
+        'total_saved'     => $total_saved,
+        'total_saved_fmt' => size_format( $total_saved, 2 ),
+        'results'         => $results,
+    ] );
 }
 
 /**
@@ -3449,11 +3888,33 @@ function sba_ajax_rollback_image_optimization() {
         wp_send_json_error( esc_html__( 'Invalid attachment ID.', 'site-bloat-auditor' ) );
     }
 
-    $optimizer = new SBA_Image_Optimizer();
-    $res       = $optimizer->rollback_optimization( $attachment_id );
+    $res = null;
+    try {
+        $optimizer = new SBA_Image_Optimizer();
+        $res       = $optimizer->rollback_optimization( $attachment_id );
+    } catch ( Throwable $t ) {
+        if ( is_a( $t, 'WP_DieException' ) || strpos( get_class( $t ), 'Die' ) !== false ) {
+            throw $t;
+        }
+        if ( ob_get_length() ) {
+            ob_clean();
+        }
+        wp_send_json_error( sprintf(
+            /* translators: %s: error message */
+            esc_html__( 'Unexpected error during image rollback: %s', 'site-bloat-auditor' ),
+            $t->getMessage()
+        ) );
+    }
 
     if ( is_wp_error( $res ) ) {
+        if ( ob_get_length() ) {
+            ob_clean();
+        }
         wp_send_json_error( $res->get_error_message() );
+    }
+
+    if ( ob_get_length() ) {
+        ob_clean();
     }
 
     wp_send_json_success( $res );
@@ -3484,22 +3945,21 @@ function sba_ajax_scan_unattached_files() {
 /**
  * 12. Quarantine Media AJAX Action: Safely move unused image and all sub-sizes into /wp-content/uploads/sba-quarantine/
  */
-add_action( 'wp_ajax_sba_quarantine_media', 'sba_ajax_quarantine_media' );
-function sba_ajax_quarantine_media() {
-    check_ajax_referer( 'sba_nonce' );
-
-    if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( esc_html__( 'Unauthorized permission.', 'site-bloat-auditor' ) );
-    }
-
-    $attachment_id = absint( $_POST['attachment_id'] ?? 0 );
+/**
+ * Helper: Safely move an individual attachment and all sub-sizes into /wp-content/uploads/sba-quarantine/
+ *
+ * @param int $attachment_id Attachment post ID.
+ * @return array|WP_Error Item record array on success, WP_Error on failure.
+ */
+function sba_quarantine_single_attachment( $attachment_id ) {
+    $attachment_id = absint( $attachment_id );
     if ( ! $attachment_id ) {
-        wp_send_json_error( esc_html__( 'Invalid attachment ID.', 'site-bloat-auditor' ) );
+        return new WP_Error( 'invalid_id', esc_html__( 'Invalid attachment ID.', 'site-bloat-auditor' ) );
     }
 
     $post = get_post( $attachment_id );
     if ( ! $post || 'attachment' !== $post->post_type ) {
-        wp_send_json_error( esc_html__( 'Attachment record not found.', 'site-bloat-auditor' ) );
+        return new WP_Error( 'not_found', esc_html__( 'Attachment record not found.', 'site-bloat-auditor' ) );
     }
 
     $file_path      = get_attached_file( $attachment_id );
@@ -3509,12 +3969,12 @@ function sba_ajax_quarantine_media() {
     $basedir        = trailingslashit( wp_normalize_path( $upload_dir['basedir'] ) );
 
     if ( empty( $file_path ) || ! file_exists( $file_path ) ) {
-        wp_send_json_error( esc_html__( 'Attachment source file does not exist on disk.', 'site-bloat-auditor' ) );
+        return new WP_Error( 'missing_file', esc_html__( 'Attachment source file does not exist on disk.', 'site-bloat-auditor' ) );
     }
 
     // Path validation: Source must reside inside uploads directory
     if ( ! sba_validate_file_in_dir( $file_path, $basedir ) ) {
-        wp_send_json_error( esc_html__( 'Security error: Media file resides outside the uploads directory.', 'site-bloat-auditor' ) );
+        return new WP_Error( 'security_error', esc_html__( 'Security error: Media file resides outside the uploads directory.', 'site-bloat-auditor' ) );
     }
 
     $normalized_file = wp_normalize_path( $file_path );
@@ -3530,12 +3990,12 @@ function sba_ajax_quarantine_media() {
 
     // Path validation: Destination must reside inside quarantine directory
     if ( ! sba_validate_file_in_dir( $quarantine_path, $quarantine_dir ) ) {
-        wp_send_json_error( esc_html__( 'Security error: Quarantine destination path is invalid.', 'site-bloat-auditor' ) );
+        return new WP_Error( 'security_error', esc_html__( 'Security error: Quarantine destination path is invalid.', 'site-bloat-auditor' ) );
     }
 
     // Collision check on original file
     if ( file_exists( $quarantine_path ) ) {
-        wp_send_json_error( sprintf(
+        return new WP_Error( 'collision', sprintf(
             esc_html__( 'Quarantine collision detected: A file already exists at "%s". Rename or clear the existing file before quarantining.', 'site-bloat-auditor' ),
             basename( $quarantine_path )
         ) );
@@ -3564,12 +4024,12 @@ function sba_ajax_quarantine_media() {
 
                 // Security check on sub-size paths
                 if ( ! sba_validate_file_in_dir( $sub_src, $basedir ) || ! sba_validate_file_in_dir( $sub_dst, $quarantine_dir ) ) {
-                    wp_send_json_error( sprintf( esc_html__( 'Security error: Invalid thumbnail sub-size path for "%s".', 'site-bloat-auditor' ), $size_key ) );
+                    return new WP_Error( 'security_error', sprintf( esc_html__( 'Security error: Invalid thumbnail sub-size path for "%s".', 'site-bloat-auditor' ), $size_key ) );
                 }
 
                 if ( file_exists( $sub_src ) ) {
                     if ( file_exists( $sub_dst ) ) {
-                        wp_send_json_error( sprintf(
+                        return new WP_Error( 'collision', sprintf(
                             esc_html__( 'Quarantine collision detected for thumbnail "%s". Please clear the collision first.', 'site-bloat-auditor' ),
                             basename( $sub_dst )
                         ) );
@@ -3586,6 +4046,83 @@ function sba_ajax_quarantine_media() {
                     ];
                 }
             }
+        }
+    }
+
+    // Collect companion WebP file if present
+    $webp_candidates = [];
+    if ( ! empty( $meta['sba_webp']['path'] ) ) {
+        $webp_candidates[] = wp_normalize_path( $meta['sba_webp']['path'] );
+    }
+    $fallback_webp = wp_normalize_path( preg_replace( '/\.[^.]+$/', '.webp', $file_path ) );
+    if ( $fallback_webp !== $normalized_file ) {
+        $webp_candidates[] = $fallback_webp;
+    }
+    $webp_candidates = array_unique( $webp_candidates );
+
+    foreach ( $webp_candidates as $w_src ) {
+        if ( file_exists( $w_src ) && sba_validate_file_in_dir( $w_src, $basedir ) ) {
+            $w_rel = substr( $w_src, strlen( $basedir ) );
+            $w_rel = ltrim( str_replace( '\\', '/', $w_rel ), '/' );
+            $w_dst = wp_normalize_path( trailingslashit( $quarantine_dir ) . $w_rel );
+
+            if ( ! sba_validate_file_in_dir( $w_dst, $quarantine_dir ) ) {
+                return new WP_Error( 'security_error', esc_html__( 'Security error: Quarantine destination path for WebP companion is invalid.', 'site-bloat-auditor' ) );
+            }
+
+            if ( file_exists( $w_dst ) ) {
+                return new WP_Error( 'collision', sprintf(
+                    esc_html__( 'Quarantine collision detected for companion WebP "%s".', 'site-bloat-auditor' ),
+                    basename( $w_dst )
+                ) );
+            }
+
+            $planned_moves[] = [
+                'type'            => 'webp_companion',
+                'src'             => $w_src,
+                'dst'             => $w_dst,
+                'original_path'   => $w_src,
+                'quarantine_path' => $w_dst,
+                'size'            => (int) filesize( $w_src ),
+            ];
+        }
+    }
+
+    // Collect original backup (.sba-orig) if present
+    $backup_candidates = [
+        wp_normalize_path( $file_path . '.sba-orig' ),
+    ];
+    $backups_map = (array) get_option( SBA_Image_Optimizer::BACKUP_OPTION_KEY, [] );
+    if ( ! empty( $backups_map[ $attachment_id ]['backup_path'] ) ) {
+        $backup_candidates[] = wp_normalize_path( $backups_map[ $attachment_id ]['backup_path'] );
+    }
+    $backup_candidates = array_unique( $backup_candidates );
+
+    foreach ( $backup_candidates as $b_src ) {
+        if ( file_exists( $b_src ) && sba_validate_file_in_dir( $b_src, $basedir ) ) {
+            $b_rel = substr( $b_src, strlen( $basedir ) );
+            $b_rel = ltrim( str_replace( '\\', '/', $b_rel ), '/' );
+            $b_dst = wp_normalize_path( trailingslashit( $quarantine_dir ) . $b_rel );
+
+            if ( ! sba_validate_file_in_dir( $b_dst, $quarantine_dir ) ) {
+                return new WP_Error( 'security_error', esc_html__( 'Security error: Quarantine destination path for backup file is invalid.', 'site-bloat-auditor' ) );
+            }
+
+            if ( file_exists( $b_dst ) ) {
+                return new WP_Error( 'collision', sprintf(
+                    esc_html__( 'Quarantine collision detected for backup file "%s".', 'site-bloat-auditor' ),
+                    basename( $b_dst )
+                ) );
+            }
+
+            $planned_moves[] = [
+                'type'            => 'backup_original',
+                'src'             => $b_src,
+                'dst'             => $b_dst,
+                'original_path'   => $b_src,
+                'quarantine_path' => $b_dst,
+                'size'            => (int) filesize( $b_src ),
+            ];
         }
     }
 
@@ -3622,7 +4159,6 @@ function sba_ajax_quarantine_media() {
             }
         }
 
-        // If rollback itself failed to restore some files, save an emergency recovery journal
         if ( ! empty( $rollback_failures ) ) {
             $journal = [
                 'attachment_id'     => $attachment_id,
@@ -3647,14 +4183,14 @@ function sba_ajax_quarantine_media() {
             ];
             update_option( 'sba_quarantined_files', $quarantined, false );
 
-            wp_send_json_error( sprintf(
+            return new WP_Error( 'quarantine_rollback_failed', sprintf(
                 esc_html__( 'Quarantine move failed (%1$s) and automatic rollback encountered issues on %2$d file(s). A recovery journal was saved to prevent data loss.', 'site-bloat-auditor' ),
                 $failure_error,
                 count( $rollback_failures )
             ) );
         }
 
-        wp_send_json_error( sprintf(
+        return new WP_Error( 'quarantine_failed', sprintf(
             esc_html__( 'Quarantine failed: %s. All files have been safely rolled back to active media.', 'site-bloat-auditor' ),
             $failure_error
         ) );
@@ -3685,6 +4221,7 @@ function sba_ajax_quarantine_media() {
         'original_path'    => $file_path,
         'quarantine_path'  => $quarantine_path,
         'preview_url'      => esc_url_raw( $quarantine_url ),
+        'full_url'         => esc_url_raw( $quarantine_url ),
         'moved_files'      => $executed_moves,
         'metadata'         => $meta,
         'total_bytes'      => $total_bytes,
@@ -3697,15 +4234,77 @@ function sba_ajax_quarantine_media() {
     $quarantined[ $attachment_id ] = $item_record;
     update_option( 'sba_quarantined_files', $quarantined, false );
 
+    return $item_record;
+}
+
+/**
+ * 12. Quarantine Media AJAX Action: Safely move unused image and all sub-sizes into /wp-content/uploads/sba-quarantine/
+ * Supports single attachment_id or bulk array attachment_ids.
+ */
+add_action( 'wp_ajax_sba_quarantine_media', 'sba_ajax_quarantine_media' );
+function sba_ajax_quarantine_media() {
+    check_ajax_referer( 'sba_nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( esc_html__( 'Unauthorized permission.', 'site-bloat-auditor' ) );
+    }
+
+    $raw_ids = ! empty( $_POST['attachment_ids'] ) ? (array) $_POST['attachment_ids'] : ( ! empty( $_POST['attachment_id'] ) ? [ $_POST['attachment_id'] ] : [] );
+    $attachment_ids = array_filter( array_map( 'absint', $raw_ids ) );
+    if ( empty( $attachment_ids ) ) {
+        wp_send_json_error( esc_html__( 'Invalid attachment ID.', 'site-bloat-auditor' ) );
+    }
+
+    if ( count( $attachment_ids ) === 1 ) {
+        $att_id = reset( $attachment_ids );
+        $res = sba_quarantine_single_attachment( $att_id );
+        if ( is_wp_error( $res ) ) {
+            wp_send_json_error( $res->get_error_message() );
+        }
+        $quarantined = (array) get_option( 'sba_quarantined_files', [] );
+        wp_send_json_success( [
+            'message'           => sprintf(
+                /* translators: %s: file name */
+                esc_html__( 'Successfully moved "%s" and its generated thumbnail variations to Quarantine.', 'site-bloat-auditor' ),
+                $res['name']
+            ),
+            'attachment_id'     => $att_id,
+            'item'              => $res,
+            'quarantined_count' => count( $quarantined ),
+        ] );
+    }
+
+    // Bulk Quarantine
+    $succeeded = 0;
+    $failed    = 0;
+    $items     = [];
+    $errors    = [];
+
+    foreach ( $attachment_ids as $id ) {
+        $res = sba_quarantine_single_attachment( $id );
+        if ( is_wp_error( $res ) ) {
+            $failed++;
+            $errors[] = sprintf( '#%d: %s', $id, $res->get_error_message() );
+        } else {
+            $succeeded++;
+            $items[] = $res;
+        }
+    }
+
+    $quarantined = (array) get_option( 'sba_quarantined_files', [] );
     wp_send_json_success( [
-        'message'           => sprintf(
-            /* translators: %s: file name */
-            esc_html__( 'Successfully moved "%s" and its generated thumbnail variations to Quarantine.', 'site-bloat-auditor' ),
-            $item_record['name']
-        ),
-        'attachment_id'     => $attachment_id,
-        'item'              => $item_record,
+        'total'             => count( $attachment_ids ),
+        'succeeded'         => $succeeded,
+        'failed'            => $failed,
+        'items'             => $items,
+        'errors'            => $errors,
         'quarantined_count' => count( $quarantined ),
+        'message'           => sprintf(
+            /* translators: 1: succeeded count, 2: failed count */
+            esc_html__( 'Successfully moved %1$d item(s) to Quarantine (%2$d failed).', 'site-bloat-auditor' ),
+            $succeeded,
+            $failed
+        ),
     ] );
 }
 
@@ -3914,6 +4513,7 @@ function sba_ajax_empty_quarantine() {
     $deleted_count  = 0;
     $freed_bytes    = 0;
     $deleted_ids    = [];
+    $errors         = [];
 
     foreach ( $targets as $attachment_id ) {
         $attachment_id = (int) $attachment_id;
@@ -3921,7 +4521,11 @@ function sba_ajax_empty_quarantine() {
             continue;
         }
 
-        $record = $quarantined[ $attachment_id ];
+        $record            = $quarantined[ $attachment_id ];
+        $item_freed        = 0;
+        $all_files_deleted = true;
+        $failed_files      = [];
+        $remaining_files   = [];
 
         // Delete quarantined files from disk after verifying they reside strictly in quarantine directory
         if ( ! empty( $record['moved_files'] ) && is_array( $record['moved_files'] ) ) {
@@ -3932,11 +4536,43 @@ function sba_ajax_empty_quarantine() {
                     if ( sba_validate_file_in_dir( $q_path, $quarantine_dir ) ) {
                         $fsize = (int) filesize( $q_path );
                         if ( @unlink( $q_path ) && ! file_exists( $q_path ) ) {
-                            $freed_bytes += $fsize;
+                            $item_freed += $fsize;
+                        } else {
+                            $all_files_deleted = false;
+                            $failed_files[]    = basename( $q_path );
+                            $remaining_files[] = $mf;
                         }
+                    } else {
+                        $all_files_deleted = false;
+                        $failed_files[]    = basename( $q_path );
+                        $remaining_files[] = $mf;
                     }
                 }
             }
+        }
+
+        // CRITICAL SAFETY CHECK: If any quarantined file failed to unlink, NEVER delete post or discard recovery journal!
+        if ( ! $all_files_deleted ) {
+            $record['moved_files']       = $remaining_files;
+            $record['last_delete_error'] = sprintf(
+                esc_html__( 'Failed to delete file(s) from disk: %s', 'site-bloat-auditor' ),
+                implode( ', ', $failed_files )
+            );
+            $quarantined[ $attachment_id ] = $record;
+            $freed_bytes += $item_freed; // Only account genuinely unlinked bytes
+            $errors[] = sprintf(
+                /* translators: 1: item name, 2: failed files list */
+                esc_html__( 'Failed to delete quarantined file(s) for "%1$s" on disk (%2$s). Attachment record and recovery journal preserved.', 'site-bloat-auditor' ),
+                $record['name'] ?? ( 'Attachment #' . $attachment_id ),
+                implode( ', ', $failed_files )
+            );
+            continue;
+        }
+
+        // If an explicit recovery journal JSON file exists, clean it up
+        $journal_file = trailingslashit( $quarantine_dir ) . 'recovery_journal_' . $attachment_id . '.json';
+        if ( file_exists( $journal_file ) && sba_validate_file_in_dir( $journal_file, $quarantine_dir ) ) {
+            @unlink( $journal_file );
         }
 
         // Clean up empty directories in quarantine path
@@ -3948,9 +4584,19 @@ function sba_ajax_empty_quarantine() {
         }
 
         // Permanently delete attachment post record and metadata
-        wp_delete_post( $attachment_id, true );
+        $del_post = wp_delete_post( $attachment_id, true );
+        if ( ! $del_post ) {
+            $errors[] = sprintf(
+                /* translators: %d: attachment ID */
+                esc_html__( 'Failed to delete WordPress attachment record #%d.', 'site-bloat-auditor' ),
+                $attachment_id
+            );
+            continue;
+        }
+
         unset( $quarantined[ $attachment_id ] );
-        $deleted_ids[] = $attachment_id;
+        $freed_bytes   += $item_freed;
+        $deleted_ids[]  = $attachment_id;
         $deleted_count++;
     }
 
@@ -3962,6 +4608,13 @@ function sba_ajax_empty_quarantine() {
 
     // Update option (reset to empty array if all deleted, or updated array if partial)
     update_option( 'sba_quarantined_files', $quarantined, false );
+
+    if ( 0 === $deleted_count && ! empty( $errors ) ) {
+        wp_send_json_error( [
+            'message' => implode( ' ', $errors ),
+            'errors'  => $errors,
+        ] );
+    }
 
     wp_send_json_success( [
         'deleted_count'     => $deleted_count,
@@ -3979,83 +4632,490 @@ function sba_ajax_empty_quarantine() {
 }
 
 /**
- * 15. Delete Single Thumbnail Sub-size AJAX Action: Safely prune an intermediate thumbnail variation,
- * delete physical file from disk, and remove it from attachment metadata to prevent 404 broken srcset errors.
+ * 14b. Bulk / Single Media Permanent Deletion AJAX Action.
+ * Supports deleting active media attachments or quarantined attachments with verified
+ * file validation, directory boundary protection, explicit user confirmation, and storage accounting.
  */
-add_action( 'wp_ajax_sba_delete_single_thumbnail_subsize', 'sba_ajax_delete_single_thumbnail_subsize' );
-function sba_ajax_delete_single_thumbnail_subsize() {
+add_action( 'wp_ajax_sba_bulk_delete_media', 'sba_ajax_bulk_delete_media' );
+add_action( 'wp_ajax_sba_delete_media', 'sba_ajax_bulk_delete_media' );
+function sba_ajax_bulk_delete_media() {
     check_ajax_referer( 'sba_nonce' );
 
     if ( ! current_user_can( 'manage_options' ) ) {
         wp_send_json_error( esc_html__( 'Unauthorized permission.', 'site-bloat-auditor' ) );
     }
 
-    $attachment_id = absint( $_POST['attachment_id'] ?? 0 );
-    $size_key      = sanitize_key( $_POST['size_key'] ?? '' );
-
-    if ( ! $attachment_id ) {
-        wp_send_json_error( esc_html__( 'Invalid attachment ID.', 'site-bloat-auditor' ) );
+    $confirmed = isset( $_POST['confirmed'] ) && 'yes' === sanitize_text_field( wp_unslash( $_POST['confirmed'] ) );
+    if ( ! $confirmed ) {
+        wp_send_json_error( esc_html__( 'Explicit confirmation is required to permanently delete files.', 'site-bloat-auditor' ) );
     }
 
-    if ( empty( $size_key ) ) {
-        wp_send_json_error( esc_html__( 'Invalid or missing thumbnail size key.', 'site-bloat-auditor' ) );
+    $raw_ids = ! empty( $_POST['attachment_ids'] ) ? (array) $_POST['attachment_ids'] : ( ! empty( $_POST['attachment_id'] ) ? [ $_POST['attachment_id'] ] : [] );
+    $attachment_ids = array_filter( array_map( 'absint', $raw_ids ) );
+    if ( empty( $attachment_ids ) ) {
+        wp_send_json_error( esc_html__( 'Invalid or empty attachment IDs.', 'site-bloat-auditor' ) );
+    }
+
+    $upload_dir     = wp_upload_dir();
+    $quarantine_dir = sba_get_quarantine_dir();
+    $basedir        = trailingslashit( wp_normalize_path( $upload_dir['basedir'] ) );
+    $quarantined    = (array) get_option( 'sba_quarantined_files', [] );
+    $backups        = (array) get_option( SBA_Image_Optimizer::BACKUP_OPTION_KEY, [] );
+    $legacy_backups = (array) get_option( 'sba_optimized_images_backup', [] );
+
+    $deleted_count = 0;
+    $freed_bytes   = 0;
+    $deleted_ids   = [];
+    $errors        = [];
+
+    foreach ( $attachment_ids as $attachment_id ) {
+        $attachment_id = absint( $attachment_id );
+        $item_freed    = 0;
+
+        // 1. If item is currently quarantined, delete from quarantine directory
+        if ( isset( $quarantined[ $attachment_id ] ) ) {
+            $record            = $quarantined[ $attachment_id ];
+            $all_files_deleted = true;
+            $failed_files      = [];
+            $remaining_files   = [];
+
+            if ( ! empty( $record['moved_files'] ) && is_array( $record['moved_files'] ) ) {
+                foreach ( $record['moved_files'] as $mf ) {
+                    $q_path = $mf['quarantine_path'] ?? '';
+                    if ( ! empty( $q_path ) && file_exists( $q_path ) ) {
+                        if ( sba_validate_file_in_dir( $q_path, $quarantine_dir ) ) {
+                            $fsize = (int) filesize( $q_path );
+                            if ( @unlink( $q_path ) && ! file_exists( $q_path ) ) {
+                                $item_freed += $fsize;
+                            } else {
+                                $all_files_deleted = false;
+                                $failed_files[]    = basename( $q_path );
+                                $remaining_files[] = $mf;
+                            }
+                        } else {
+                            $all_files_deleted = false;
+                            $failed_files[]    = basename( $q_path );
+                            $remaining_files[] = $mf;
+                        }
+                    }
+                }
+            }
+
+            // CRITICAL SAFETY CHECK: If any quarantined file failed to unlink, NEVER delete post or discard recovery journal!
+            if ( ! $all_files_deleted ) {
+                $record['moved_files']       = $remaining_files;
+                $record['last_delete_error'] = sprintf(
+                    esc_html__( 'Failed to delete file(s) from disk: %s', 'site-bloat-auditor' ),
+                    implode( ', ', $failed_files )
+                );
+                $quarantined[ $attachment_id ] = $record;
+                $freed_bytes += $item_freed; // Only count genuinely unlinked bytes
+                $errors[] = sprintf(
+                    /* translators: 1: item name, 2: failed files list */
+                    esc_html__( 'Failed to delete quarantined file(s) for "%1$s" on disk (%2$s). Attachment record and recovery journal preserved.', 'site-bloat-auditor' ),
+                    $record['name'] ?? ( 'Attachment #' . $attachment_id ),
+                    implode( ', ', $failed_files )
+                );
+                continue;
+            }
+
+            // If an explicit recovery journal JSON file exists, clean it up
+            $journal_file = trailingslashit( $quarantine_dir ) . 'recovery_journal_' . $attachment_id . '.json';
+            if ( file_exists( $journal_file ) && sba_validate_file_in_dir( $journal_file, $quarantine_dir ) ) {
+                @unlink( $journal_file );
+            }
+
+            // Clean up item folder if empty
+            if ( ! empty( $record['quarantine_path'] ) ) {
+                $item_dir = dirname( $record['quarantine_path'] );
+                if ( is_dir( $item_dir ) && sba_validate_file_in_dir( $item_dir, $quarantine_dir ) && $item_dir !== rtrim( $quarantine_dir, '/\\' ) ) {
+                    @rmdir( $item_dir );
+                }
+            }
+
+            // Delete WordPress attachment post record
+            $del_res = wp_delete_post( $attachment_id, true );
+            if ( ! $del_res ) {
+                $errors[] = sprintf(
+                    /* translators: %d: attachment ID */
+                    esc_html__( 'Failed to delete WordPress attachment post record #%d.', 'site-bloat-auditor' ),
+                    $attachment_id
+                );
+                continue;
+            }
+
+            unset( $quarantined[ $attachment_id ] );
+            $freed_bytes   += $item_freed;
+            $deleted_ids[]  = $attachment_id;
+            $deleted_count++;
+            continue;
+        }
+
+        // 2. Active attachment in Media Library
+        $post = get_post( $attachment_id );
+        if ( ! $post || 'attachment' !== $post->post_type ) {
+            $errors[] = sprintf(
+                /* translators: %d: attachment ID */
+                esc_html__( 'Attachment #%d not found or not an attachment post.', 'site-bloat-auditor' ),
+                $attachment_id
+            );
+            continue;
+        }
+
+        $file_path = get_attached_file( $attachment_id );
+        if ( empty( $file_path ) ) {
+            $del_res = wp_delete_post( $attachment_id, true );
+            if ( $del_res ) {
+                $deleted_ids[] = $attachment_id;
+                $deleted_count++;
+            } else {
+                $errors[] = sprintf(
+                    /* translators: %d: attachment ID */
+                    esc_html__( 'Failed to delete attachment post record #%d.', 'site-bloat-auditor' ),
+                    $attachment_id
+                );
+            }
+            continue;
+        }
+
+        // Security boundary validation: File MUST reside strictly inside uploads directory
+        if ( ! sba_validate_file_in_dir( $file_path, $basedir ) ) {
+            $errors[] = sprintf(
+                /* translators: %s: file path */
+                esc_html__( 'Security error: File "%s" is outside the allowed uploads directory.', 'site-bloat-auditor' ),
+                wp_basename( $file_path )
+            );
+            continue;
+        }
+
+        // Unlink primary original file FIRST with strict failure check
+        if ( file_exists( $file_path ) ) {
+            $fsize = (int) filesize( $file_path );
+            if ( ! @unlink( $file_path ) || file_exists( $file_path ) ) {
+                // FAILURE INJECTION / READONLY / LOCK SAFETY:
+                // Primary image could NOT be unlinked. ABORT deletion of this item immediately.
+                // Do NOT delete thumbnails, do NOT delete backups, do NOT delete post record, do NOT discard backup option!
+                $errors[] = sprintf(
+                    /* translators: %s: file name */
+                    esc_html__( 'Failed to delete primary image "%s" from disk (file locked or permission denied). File, backup, and attachment record preserved.', 'site-bloat-auditor' ),
+                    wp_basename( $file_path )
+                );
+                continue;
+            }
+            $item_freed += $fsize;
+        }
+
+        // Unlink thumbnail sub-sizes
+        $meta = wp_get_attachment_metadata( $attachment_id );
+        if ( ! empty( $meta['sizes'] ) && is_array( $meta['sizes'] ) ) {
+            $file_dir = dirname( $file_path );
+            foreach ( $meta['sizes'] as $size_info ) {
+                if ( ! empty( $size_info['file'] ) ) {
+                    $sub_path = wp_normalize_path( $file_dir . DIRECTORY_SEPARATOR . $size_info['file'] );
+                    if ( sba_validate_file_in_dir( $sub_path, $basedir ) && file_exists( $sub_path ) ) {
+                        $sub_size = (int) filesize( $sub_path );
+                        if ( @unlink( $sub_path ) && ! file_exists( $sub_path ) ) {
+                            $item_freed += $sub_size;
+                        } else {
+                            $errors[] = sprintf(
+                                /* translators: %s: file name */
+                                esc_html__( 'Failed to delete thumbnail "%s" from disk.', 'site-bloat-auditor' ),
+                                basename( $sub_path )
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Unlink companion WebP file if present (from metadata, backup record, or naming convention)
+        $webp_candidates = [];
+        if ( ! empty( $meta['sba_webp']['path'] ) ) {
+            $webp_candidates[] = wp_normalize_path( $meta['sba_webp']['path'] );
+        }
+        if ( ! empty( $backups[ $attachment_id ]['webp_path'] ) ) {
+            $webp_candidates[] = wp_normalize_path( $backups[ $attachment_id ]['webp_path'] );
+        }
+        $fallback_webp = wp_normalize_path( preg_replace( '/\.[^.]+$/', '.webp', $file_path ) );
+        if ( $fallback_webp !== wp_normalize_path( $file_path ) ) {
+            $webp_candidates[] = $fallback_webp;
+        }
+        $webp_candidates = array_unique( $webp_candidates );
+
+        foreach ( $webp_candidates as $w_path ) {
+            if ( $w_path !== wp_normalize_path( $file_path ) && file_exists( $w_path ) && sba_validate_file_in_dir( $w_path, $basedir ) ) {
+                $w_size = (int) filesize( $w_path );
+                if ( @unlink( $w_path ) && ! file_exists( $w_path ) ) {
+                    $item_freed += $w_size;
+                } else {
+                    $errors[] = sprintf(
+                        /* translators: %s: file name */
+                        esc_html__( 'Failed to delete companion WebP file "%s" from disk.', 'site-bloat-auditor' ),
+                        basename( $w_path )
+                    );
+                }
+            }
+        }
+
+        // Unlink original backup (.sba-orig) if present
+        $backup_candidates = [
+            wp_normalize_path( $file_path . '.sba-orig' ),
+        ];
+        if ( ! empty( $backups[ $attachment_id ]['backup_path'] ) ) {
+            $backup_candidates[] = wp_normalize_path( $backups[ $attachment_id ]['backup_path'] );
+        }
+        $backup_candidates = array_unique( $backup_candidates );
+
+        $backup_unlink_failed = false;
+        foreach ( $backup_candidates as $b_path ) {
+            if ( file_exists( $b_path ) && sba_validate_file_in_dir( $b_path, $basedir ) ) {
+                $b_size = (int) filesize( $b_path );
+                if ( @unlink( $b_path ) && ! file_exists( $b_path ) ) {
+                    $item_freed += $b_size;
+                } else {
+                    $backup_unlink_failed = true;
+                    $errors[] = sprintf(
+                        /* translators: %s: file name */
+                        esc_html__( 'Failed to delete backup file "%s" from disk.', 'site-bloat-auditor' ),
+                        basename( $b_path )
+                    );
+                }
+            }
+        }
+
+        // Delete post and metadata from WordPress database
+        $del_post = wp_delete_post( $attachment_id, true );
+        if ( ! $del_post ) {
+            $errors[] = sprintf(
+                /* translators: %d: attachment ID */
+                esc_html__( 'Failed to delete WordPress attachment record #%d.', 'site-bloat-auditor' ),
+                $attachment_id
+            );
+            continue;
+        }
+
+        // Only remove from backup options if backup file on disk was cleanly deleted
+        if ( ! $backup_unlink_failed ) {
+            unset( $backups[ $attachment_id ] );
+            unset( $legacy_backups[ $attachment_id ] );
+        }
+
+        $freed_bytes   += $item_freed;
+        $deleted_ids[]  = $attachment_id;
+        $deleted_count++;
+    }
+
+    update_option( SBA_Image_Optimizer::BACKUP_OPTION_KEY, $backups, false );
+    if ( ! empty( $legacy_backups ) ) {
+        update_option( 'sba_optimized_images_backup', $legacy_backups, false );
+    } else {
+        delete_option( 'sba_optimized_images_backup' );
+    }
+    update_option( 'sba_quarantined_files', $quarantined, false );
+
+    if ( $freed_bytes > 0 ) {
+        $prev_reclaimed = (int) get_option( 'sba_reclaimed_media_bytes', 0 );
+        update_option( 'sba_reclaimed_media_bytes', $prev_reclaimed + $freed_bytes, false );
+    }
+
+    if ( 0 === $deleted_count && ! empty( $errors ) ) {
+        wp_send_json_error( [
+            'message' => implode( ' ', $errors ),
+            'errors'  => $errors,
+        ] );
+    }
+
+    wp_send_json_success( [
+        'deleted_count'   => $deleted_count,
+        'deleted_ids'     => $deleted_ids,
+        'freed_bytes'     => $freed_bytes,
+        'freed_formatted' => size_format( $freed_bytes, 2 ),
+        'errors'          => $errors,
+        'message'         => sprintf(
+            /* translators: 1: count of deleted attachments, 2: formatted disk space freed */
+            esc_html__( 'Permanently deleted %1$d attachment(s), freeing %2$s of disk space.', 'site-bloat-auditor' ),
+            $deleted_count,
+            size_format( $freed_bytes, 2 )
+        ),
+    ] );
+}
+
+/**
+ * Safely prune one or more intermediate thumbnail variations for an attachment.
+ *
+ * Validates upload path boundaries, checks SBA_Image_Reference_Index and responsive
+ * srcset protections, preserves any physical files still shared by remaining sizes
+ * or the main attachment, updates attachment metadata once, and records reclaimed bytes.
+ *
+ * @param int   $attachment_id Attachment post ID.
+ * @param array $raw_size_keys List of thumbnail size keys requested for pruning.
+ * @return array|WP_Error Pruning summary array on success, WP_Error on invalid input.
+ */
+function sba_prune_attachment_subsizes( $attachment_id, array $raw_size_keys ) {
+    $attachment_id = absint( $attachment_id );
+    if ( ! $attachment_id ) {
+        return new WP_Error( 'invalid_attachment', esc_html__( 'Invalid attachment ID.', 'site-bloat-auditor' ) );
+    }
+
+    $size_keys = array_values( array_unique( array_filter( array_map( 'sanitize_key', $raw_size_keys ) ) ) );
+    if ( empty( $size_keys ) ) {
+        return new WP_Error( 'invalid_size_key', esc_html__( 'Invalid or missing thumbnail size key.', 'site-bloat-auditor' ) );
     }
 
     $post = get_post( $attachment_id );
     if ( ! $post || 'attachment' !== $post->post_type ) {
-        wp_send_json_error( esc_html__( 'Attachment record not found.', 'site-bloat-auditor' ) );
+        return new WP_Error( 'not_found', esc_html__( 'Attachment record not found.', 'site-bloat-auditor' ) );
     }
 
     $meta = wp_get_attachment_metadata( $attachment_id );
-    if ( empty( $meta ) || ! is_array( $meta ) || empty( $meta['sizes'] ) || ! isset( $meta['sizes'][ $size_key ] ) ) {
-        wp_send_json_error( esc_html__( 'The requested thumbnail size does not exist in metadata.', 'site-bloat-auditor' ) );
+    if ( empty( $meta ) || ! is_array( $meta ) || empty( $meta['sizes'] ) || ! is_array( $meta['sizes'] ) ) {
+        return new WP_Error( 'missing_size', esc_html__( 'The requested thumbnail size does not exist in metadata.', 'site-bloat-auditor' ) );
     }
 
-    $size_info     = $meta['sizes'][ $size_key ];
-    $file_path     = get_attached_file( $attachment_id );
-    $file_dir      = $file_path ? dirname( $file_path ) : '';
-    $upload_dir    = wp_upload_dir();
-    $basedir       = trailingslashit( wp_normalize_path( $upload_dir['basedir'] ) );
-    $deleted_bytes = 0;
-    $deleted_file  = ! empty( $size_info['file'] ) ? $size_info['file'] : '';
+    $file_path  = get_attached_file( $attachment_id );
+    $file_dir   = $file_path ? dirname( $file_path ) : '';
+    $upload_dir = wp_upload_dir();
+    $basedir    = trailingslashit( wp_normalize_path( $upload_dir['basedir'] ) );
 
-    if ( $file_dir && ! empty( $size_info['file'] ) ) {
-        $sub_path = wp_normalize_path( $file_dir . DIRECTORY_SEPARATOR . $size_info['file'] );
+    $responsive_keys      = [ 'medium', 'medium_large', 'large' ];
+    $needs_parent_check   = ! empty( array_intersect( $size_keys, $responsive_keys ) ) && class_exists( 'SBA_Usage_Detector' );
+    $parent_is_in_use     = false;
+    if ( $needs_parent_check ) {
+        $usage_detector   = new SBA_Usage_Detector();
+        $att_check        = $usage_detector->scan_references( [ $post ] );
+        $att_usage        = $att_check[ $attachment_id ] ?? null;
+        $parent_is_in_use = (bool) ( $att_usage && 'no_references_found' !== $att_usage['classification'] );
+    }
 
-        // Security boundary validation: Sub-size must reside inside uploads directory
-        if ( ! sba_validate_file_in_dir( $sub_path, $basedir ) ) {
-            wp_send_json_error( esc_html__( 'Security error: Thumbnail file path resides outside uploads directory.', 'site-bloat-auditor' ) );
+    $ref_engine      = class_exists( 'SBA_Image_Reference_Index' ) ? SBA_Image_Reference_Index::get_instance() : null;
+    $att_url         = wp_get_attachment_url( $attachment_id );
+    $att_url_dir     = $att_url ? dirname( $att_url ) : '';
+    $eligible_items  = [];
+    $skipped         = [];
+
+    // Phase 1: Validate safety rules for every requested size key before touching disk or metadata.
+    foreach ( $size_keys as $size_key ) {
+        if ( ! isset( $meta['sizes'][ $size_key ] ) || ! is_array( $meta['sizes'][ $size_key ] ) ) {
+            $skipped[ $size_key ] = esc_html__( 'The requested thumbnail size does not exist in metadata.', 'site-bloat-auditor' );
+            continue;
         }
 
-        if ( file_exists( $sub_path ) ) {
-            $fsize = (int) filesize( $sub_path );
-            if ( function_exists( 'wp_delete_file' ) ) {
-                wp_delete_file( $sub_path );
-            }
-            if ( file_exists( $sub_path ) ) {
-                @unlink( $sub_path );
+        $size_info = $meta['sizes'][ $size_key ];
+        $sub_file  = ! empty( $size_info['file'] ) ? (string) $size_info['file'] : '';
+        $sub_path  = ( $file_dir && '' !== $sub_file ) ? wp_normalize_path( $file_dir . DIRECTORY_SEPARATOR . $sub_file ) : '';
+
+        if ( '' !== $sub_path ) {
+            if ( ! sba_validate_file_in_dir( $sub_path, $basedir ) ) {
+                $skipped[ $size_key ] = esc_html__( 'Security error: Thumbnail file path resides outside uploads directory.', 'site-bloat-auditor' );
+                continue;
             }
 
-            // Verify physical deletion before touching metadata
-            if ( file_exists( $sub_path ) ) {
-                wp_send_json_error( sprintf( esc_html__( 'Could not delete thumbnail file "%s" from disk. Check file permissions.', 'site-bloat-auditor' ), basename( $sub_path ) ) );
+            if ( $ref_engine ) {
+                $sub_rel   = ( 0 === strpos( $sub_path, $basedir ) ) ? ltrim( substr( $sub_path, strlen( $basedir ) ), '/' ) : '';
+                $sub_url   = wp_get_attachment_image_url( $attachment_id, $size_key ) ?: ( $att_url_dir ? $att_url_dir . '/' . $sub_file : '' );
+                $sub_usage = $ref_engine->check_thumbnail_usage( $sub_file, $sub_rel, $sub_url, $attachment_id, $size_key );
+
+                if ( ! empty( $sub_usage['found'] ) ) {
+                    $ref                  = $sub_usage['primary'];
+                    $skipped[ $size_key ] = sprintf(
+                        esc_html__( 'Cannot delete thumbnail "%1$s": this size is actively in use in "%2$s" (Source: %3$s, Match: %4$s). Deletion blocked for safety.', 'site-bloat-auditor' ),
+                        $sub_file,
+                        $ref['source_title'],
+                        $ref['detection_method'],
+                        $ref['match_type']
+                    );
+                    continue;
+                }
+
+                if ( ! empty( $sub_usage['is_incomplete'] ) ) {
+                    $skipped[ $size_key ] = esc_html__( 'Cannot delete thumbnail: image usage scan is incomplete. Deletion blocked for safety.', 'site-bloat-auditor' );
+                    continue;
+                }
             }
 
-            $deleted_bytes = $fsize;
+            if ( in_array( $size_key, $responsive_keys, true ) && $parent_is_in_use ) {
+                $skipped[ $size_key ] = esc_html__( 'Cannot delete thumbnail: this size is required for mobile and tablet responsive srcset on active site media.', 'site-bloat-auditor' );
+                continue;
+            }
+        }
+
+        $eligible_items[ $size_key ] = [
+            'file' => $sub_file,
+            'path' => $sub_path,
+        ];
+    }
+
+    // Phase 2: Protect physical files still referenced by non-pruned sizes or the original attachment.
+    $retained_paths = [];
+    if ( $file_path ) {
+        $retained_paths[ strtolower( wp_normalize_path( $file_path ) ) ] = true;
+    }
+    if ( $file_dir ) {
+        foreach ( $meta['sizes'] as $other_key => $other_info ) {
+            if ( isset( $eligible_items[ $other_key ] ) || empty( $other_info['file'] ) ) {
+                continue;
+            }
+            $other_path = strtolower( wp_normalize_path( $file_dir . DIRECTORY_SEPARATOR . $other_info['file'] ) );
+            $retained_paths[ $other_path ] = true;
         }
     }
 
-    // Update attachment metadata to remove the size key so WordPress does not output it in future srcset
-    unset( $meta['sizes'][ $size_key ] );
-    wp_update_attachment_metadata( $attachment_id, $meta );
+    // Phase 3: Delete eligible physical files (once per unique path) and update metadata.
+    $deleted_keys       = [];
+    $deleted_files      = [];
+    $deleted_bytes      = 0;
+    $unlinked_paths     = [];
+    $failed_delete_path = [];
 
-    // Track verified reclaimed bytes
+    foreach ( $eligible_items as $size_key => $item_info ) {
+        $sub_path  = $item_info['path'];
+        $sub_file  = $item_info['file'];
+        $norm_key  = '' !== $sub_path ? strtolower( $sub_path ) : '';
+
+        if ( '' !== $sub_path && empty( $retained_paths[ $norm_key ] ) ) {
+            if ( isset( $failed_delete_path[ $norm_key ] ) ) {
+                $skipped[ $size_key ] = $failed_delete_path[ $norm_key ];
+                continue;
+            }
+
+            if ( ! isset( $unlinked_paths[ $norm_key ] ) && file_exists( $sub_path ) ) {
+                $fsize = (int) filesize( $sub_path );
+                if ( function_exists( 'wp_delete_file' ) ) {
+                    wp_delete_file( $sub_path );
+                }
+                if ( file_exists( $sub_path ) ) {
+                    @unlink( $sub_path );
+                }
+
+                if ( file_exists( $sub_path ) ) {
+                    $err_msg                        = sprintf( esc_html__( 'Could not delete thumbnail file "%s" from disk. Check file permissions.', 'site-bloat-auditor' ), basename( $sub_path ) );
+                    $failed_delete_path[ $norm_key ] = $err_msg;
+                    $skipped[ $size_key ]            = $err_msg;
+                    continue;
+                }
+
+                $unlinked_paths[ $norm_key ] = true;
+                $deleted_bytes              += $fsize;
+            }
+        }
+
+        unset( $meta['sizes'][ $size_key ] );
+        $deleted_keys[]  = $size_key;
+        $deleted_files[] = sanitize_file_name( $sub_file );
+    }
+
+    if ( ! empty( $deleted_keys ) ) {
+        wp_update_attachment_metadata( $attachment_id, $meta );
+    }
+
     if ( $deleted_bytes > 0 ) {
         $prev_reclaimed = (int) get_option( 'sba_reclaimed_media_bytes', 0 );
         update_option( 'sba_reclaimed_media_bytes', $prev_reclaimed + $deleted_bytes, false );
     }
 
-    // Recalculate remaining total bytes and sub-size count for this attachment
+    $actual_reclaimed_b  = (int) get_option( 'sba_reclaimed_media_bytes', 0 );
+    $actual_reclaimed_mb = round( $actual_reclaimed_b / ( 1024 * 1024 ), 2 );
+
     $orig_bytes        = ( $file_path && file_exists( $file_path ) ) ? (int) filesize( $file_path ) : 0;
     $new_total_bytes   = $orig_bytes;
     $new_subsize_count = 0;
@@ -4071,22 +5131,109 @@ function sba_ajax_delete_single_thumbnail_subsize() {
         }
     }
 
-    wp_send_json_success( [
+    return [
         'attachment_id'       => $attachment_id,
-        'size_key'            => $size_key,
-        'deleted_filename'    => sanitize_file_name( $deleted_file ),
+        'deleted_keys'        => $deleted_keys,
+        'deleted_filenames'   => $deleted_files,
+        'skipped'             => $skipped,
         'deleted_bytes'       => $deleted_bytes,
         'deleted_formatted'   => size_format( $deleted_bytes, 2 ),
         'new_total_bytes'     => $new_total_bytes,
         'new_total_formatted' => size_format( $new_total_bytes, 2 ),
         'new_subsize_count'   => $new_subsize_count,
+        'actual_reclaimed_mb' => $actual_reclaimed_mb,
+    ];
+}
+
+/**
+ * 15. Delete Single Thumbnail Sub-size AJAX Action: Safely prune an intermediate thumbnail variation,
+ * delete physical file from disk, and remove it from attachment metadata to prevent 404 broken srcset errors.
+ */
+add_action( 'wp_ajax_sba_delete_single_thumbnail_subsize', 'sba_ajax_delete_single_thumbnail_subsize' );
+function sba_ajax_delete_single_thumbnail_subsize() {
+    check_ajax_referer( 'sba_nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( esc_html__( 'Unauthorized permission.', 'site-bloat-auditor' ) );
+    }
+
+    $attachment_id = absint( $_POST['attachment_id'] ?? 0 );
+    $size_key      = sanitize_key( $_POST['size_key'] ?? '' );
+
+    $result = sba_prune_attachment_subsizes( $attachment_id, [ $size_key ] );
+    if ( is_wp_error( $result ) ) {
+        wp_send_json_error( $result->get_error_message() );
+    }
+
+    if ( empty( $result['deleted_keys'] ) ) {
+        $reason = $result['skipped'][ $size_key ] ?? esc_html__( 'Failed to delete thumbnail variant.', 'site-bloat-auditor' );
+        wp_send_json_error( $reason );
+    }
+
+    wp_send_json_success( [
+        'attachment_id'       => $result['attachment_id'],
+        'size_key'            => $size_key,
+        'deleted_filename'    => $result['deleted_filenames'][0] ?? '',
+        'deleted_bytes'       => $result['deleted_bytes'],
+        'deleted_formatted'   => $result['deleted_formatted'],
+        'new_total_bytes'     => $result['new_total_bytes'],
+        'new_total_formatted' => $result['new_total_formatted'],
+        'new_subsize_count'   => $result['new_subsize_count'],
+        'actual_reclaimed_mb' => $result['actual_reclaimed_mb'],
         'message'             => sprintf(
             /* translators: 1: size key, 2: file size freed */
             esc_html__( 'Successfully pruned thumbnail variant "%1$s", freeing %2$s.', 'site-bloat-auditor' ),
             $size_key,
-            size_format( $deleted_bytes, 2 )
+            $result['deleted_formatted']
         ),
     ] );
+}
+
+/**
+ * 15b. Delete Bulk Thumbnail Sub-sizes AJAX Action: Safely prune multiple selected thumbnail variations
+ * for an attachment in a single atomic metadata update.
+ */
+add_action( 'wp_ajax_sba_delete_bulk_thumbnail_subsizes', 'sba_ajax_delete_bulk_thumbnail_subsizes' );
+function sba_ajax_delete_bulk_thumbnail_subsizes() {
+    check_ajax_referer( 'sba_nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( esc_html__( 'Unauthorized permission.', 'site-bloat-auditor' ) );
+    }
+
+    $attachment_id = absint( $_POST['attachment_id'] ?? 0 );
+    $raw_keys      = isset( $_POST['size_keys'] ) ? (array) wp_unslash( $_POST['size_keys'] ) : [];
+
+    $result = sba_prune_attachment_subsizes( $attachment_id, $raw_keys );
+    if ( is_wp_error( $result ) ) {
+        wp_send_json_error( $result->get_error_message() );
+    }
+
+    $deleted_count = count( $result['deleted_keys'] );
+    $skipped_count = count( $result['skipped'] );
+
+    if ( 0 === $deleted_count ) {
+        $first_reason = ! empty( $result['skipped'] ) ? reset( $result['skipped'] ) : esc_html__( 'No selected thumbnail variations could be deleted.', 'site-bloat-auditor' );
+        wp_send_json_error( $first_reason );
+    }
+
+    $message = sprintf(
+        /* translators: 1: number of deleted thumbnail sizes, 2: formatted disk space freed */
+        esc_html__( 'Successfully pruned %1$d thumbnail variation(s), freeing %2$s.', 'site-bloat-auditor' ),
+        $deleted_count,
+        $result['deleted_formatted']
+    );
+
+    if ( $skipped_count > 0 ) {
+        $message .= ' ' . sprintf(
+            /* translators: %d: number of skipped thumbnail sizes */
+            esc_html__( '(%d protected or missing variation(s) were skipped for safety.)', 'site-bloat-auditor' ),
+            $skipped_count
+        );
+    }
+
+    $result['message'] = $message;
+    wp_send_json_success( $result );
 }
 
 /**
@@ -4338,9 +5485,419 @@ function sba_get_plugins_db_footprint( $all_plugins = [] ) {
 }
 
 /**
+ * Helper: Classify a plugin into an infrastructure/service archetype.
+ *
+ * Archetypes represent plugins that operate at the server, request, or admin level
+ * and intentionally do not create frontend content (posts, pages, blocks, widgets).
+ * Identifying these prevents them from being falsely reported as "unused".
+ *
+ * @param string $slug        Plugin directory slug or file base.
+ * @param string $plugin_file Plugin basename (e.g. 'slug/plugin.php').
+ * @param array  $plugin_meta Plugin metadata from get_plugins().
+ * @return array|null Archetype info with 'category' and 'explanation', or null if not an archetype.
+ */
+function sba_get_plugin_archetype( $slug, $plugin_file, $plugin_meta ) {
+    $name       = strtolower( $plugin_meta['Name'] ?? '' );
+    $desc       = strtolower( $plugin_meta['Description'] ?? '' );
+    $slug_lower = strtolower( $slug );
+    $file_lower = strtolower( $plugin_file );
+
+    // 1. Security & Firewalls
+    $security_slugs = [
+        'wordfence', 'better-wp-security', 'sucuri-scanner', 'all-in-one-wp-security-and-firewall',
+        'wp-cerber', 'defender-security', 'ninjafirewall', 'security-ninja', 'bulletproof-security',
+        'two-factor', 'wp-simple-firewall', 'shield-security', 'ithemes-security-pro', 'jetpack-protect',
+    ];
+    foreach ( $security_slugs as $s ) {
+        if ( false !== strpos( $slug_lower, $s ) || false !== strpos( $file_lower, $s ) ) {
+            return [
+                'category'    => __( 'Security & Firewall', 'site-bloat-auditor' ),
+                'explanation' => __( 'Security firewalls operate at the PHP request level to filter traffic, block brute-force attacks, and monitor file integrity. They do not publish public frontend content or shortcodes.', 'site-bloat-auditor' ),
+            ];
+        }
+    }
+    if ( ( false !== strpos( $name, 'security' ) || false !== strpos( $desc, 'security' ) ) &&
+         ( false !== strpos( $name, 'firewall' ) || false !== strpos( $desc, 'firewall' ) || false !== strpos( $desc, 'malware' ) || false !== strpos( $desc, 'brute force' ) ) ) {
+        return [
+            'category'    => __( 'Security & Firewall', 'site-bloat-auditor' ),
+            'explanation' => __( 'Security firewalls operate at the PHP request level to filter traffic, block brute-force attacks, and monitor file integrity. They do not publish public frontend content or shortcodes.', 'site-bloat-auditor' ),
+        ];
+    }
+
+    // 2. Disaster Recovery & Backup
+    $backup_slugs = [
+        'updraftplus', 'duplicator', 'backwpup', 'all-in-one-wp-migration', 'backupbuddy',
+        'blogvault', 'wp-vivid', 'wp-database-backup', 'total-upkeep', 'wpvivid-backuprestore',
+    ];
+    foreach ( $backup_slugs as $s ) {
+        if ( false !== strpos( $slug_lower, $s ) || false !== strpos( $file_lower, $s ) ) {
+            return [
+                'category'    => __( 'Backup & Disaster Recovery', 'site-bloat-auditor' ),
+                'explanation' => __( 'Backup and migration plugins create archive snapshots of files and database tables. They operate in the background or during manual exports and do not create frontend content.', 'site-bloat-auditor' ),
+            ];
+        }
+    }
+    if ( ( false !== strpos( $name, 'backup' ) || false !== strpos( $desc, 'backup' ) ) &&
+         ( false !== strpos( $name, 'restore' ) || false !== strpos( $desc, 'restore' ) || false !== strpos( $desc, 'migration' ) || false !== strpos( $desc, 'database backup' ) ) ) {
+        return [
+            'category'    => __( 'Backup & Disaster Recovery', 'site-bloat-auditor' ),
+            'explanation' => __( 'Backup and migration plugins create archive snapshots of files and database tables. They operate in the background or during manual exports and do not create frontend content.', 'site-bloat-auditor' ),
+        ];
+    }
+
+    // 3. Transactional Email & SMTP
+    $smtp_slugs = [
+        'wp-mail-smtp', 'fluentsmtp', 'post-smtp', 'easy-wp-smtp', 'mailgun',
+        'sendgrid', 'smtp-mailer', 'wp-smtp', 'sendinblue', 'brevo',
+    ];
+    foreach ( $smtp_slugs as $s ) {
+        if ( false !== strpos( $slug_lower, $s ) || false !== strpos( $file_lower, $s ) ) {
+            return [
+                'category'    => __( 'Mail Delivery & SMTP', 'site-bloat-auditor' ),
+                'explanation' => __( 'SMTP and mail delivery plugins hook into the WordPress wp_mail() transport layer to re-route outgoing notifications. They operate transparently without frontend content.', 'site-bloat-auditor' ),
+            ];
+        }
+    }
+    if ( false !== strpos( $slug_lower, 'smtp' ) || false !== strpos( $name, 'smtp' ) || false !== strpos( $desc, 'phpmailer' ) || false !== strpos( $desc, 'transactional email' ) ) {
+        return [
+            'category'    => __( 'Mail Delivery & SMTP', 'site-bloat-auditor' ),
+            'explanation' => __( 'SMTP and mail delivery plugins hook into the WordPress wp_mail() transport layer to re-route outgoing notifications. They operate transparently without frontend content.', 'site-bloat-auditor' ),
+        ];
+    }
+
+    // 4. Caching, Performance & Object Cache
+    $cache_slugs = [
+        'wp-rocket', 'w3-total-cache', 'wp-super-cache', 'litespeed-cache', 'redis-cache',
+        'redis-object-cache', 'memcached', 'autoptimize', 'wp-optimize', 'hummingbird',
+        'fast-velocity-minify', 'cloudflare', 'bunnycdn', 'nginx-helper', 'cache-enabler',
+    ];
+    foreach ( $cache_slugs as $s ) {
+        if ( false !== strpos( $slug_lower, $s ) || false !== strpos( $file_lower, $s ) ) {
+            return [
+                'category'    => __( 'Caching & Performance Optimization', 'site-bloat-auditor' ),
+                'explanation' => __( 'Performance and caching plugins manage server-level page caching, Redis/Memcached object stores, and asset minification. They operate transparently without frontend content.', 'site-bloat-auditor' ),
+            ];
+        }
+    }
+    if ( ( false !== strpos( $name, 'cache' ) || false !== strpos( $desc, 'cache' ) ) &&
+         ( false !== strpos( $desc, 'object cache' ) || false !== strpos( $desc, 'page cache' ) || false !== strpos( $desc, 'performance' ) || false !== strpos( $desc, 'minify' ) ) ) {
+        return [
+            'category'    => __( 'Caching & Performance Optimization', 'site-bloat-auditor' ),
+            'explanation' => __( 'Performance and caching plugins manage server-level page caching, Redis/Memcached object stores, and asset minification. They operate transparently without frontend content.', 'site-bloat-auditor' ),
+        ];
+    }
+
+    // 5. Administration, Developer & Diagnostic Tooling
+    $admin_slugs = [
+        'site-bloat-auditor', 'query-monitor', 'wp-crontrol', 'user-role-editor',
+        'code-snippets', 'debug-bar', 'health-check', 'wp-file-manager', 'transients-manager',
+        'admin-columns', 'advanced-database-cleaner', 'wp-security-audit-log', 'simple-history',
+    ];
+    foreach ( $admin_slugs as $s ) {
+        if ( false !== strpos( $slug_lower, $s ) || false !== strpos( $file_lower, $s ) ) {
+            return [
+                'category'    => __( 'Administration & Developer Tooling', 'site-bloat-auditor' ),
+                'explanation' => __( 'Administrative and developer plugins provide dashboards, debugging tools, database cleanup, or cron management exclusively in the WordPress admin area.', 'site-bloat-auditor' ),
+            ];
+        }
+    }
+    if ( ( false !== strpos( $name, 'developer' ) || false !== strpos( $desc, 'developer' ) || false !== strpos( $desc, 'profiler' ) || false !== strpos( $desc, 'debugging' ) ) &&
+         ( false !== strpos( $desc, 'admin' ) || false !== strpos( $desc, 'query' ) || false !== strpos( $desc, 'hook' ) || false !== strpos( $desc, 'benchmark' ) ) ) {
+        return [
+            'category'    => __( 'Administration & Developer Tooling', 'site-bloat-auditor' ),
+            'explanation' => __( 'Administrative and developer plugins provide dashboards, debugging tools, database cleanup, or cron management exclusively in the WordPress admin area.', 'site-bloat-auditor' ),
+        ];
+    }
+
+    return null;
+}
+
+/**
+ * Helper: Detect usage evidence for an installed plugin.
+ *
+ * Inspects:
+ * - Shortcodes present in published/private content
+ * - Gutenberg block markup in published/private content
+ * - Active widgets registered in sidebars
+ * - Custom post types with published content
+ * - Dedicated database tables
+ * - Post metadata configurations
+ * - Infrastructure and background archetypes
+ *
+ * Strict safety rule: Lack of detected content references does NOT mean a plugin is unused.
+ * Returns three distinct usage statuses:
+ * - 'Usage Detected' (status: 'usage_detected' or 'usage_detected_inactive')
+ * - 'Active · No Usage Detected' (status: 'active_no_usage')
+ * - 'Usage Unknown' (status: 'usage_unknown')
+ * - 'Inactive · No Usage Detected' (status: 'inactive')
+ *
+ * @param string $plugin_file Plugin basename (e.g. 'slug/plugin.php').
+ * @param array  $plugin_meta Plugin metadata from get_plugins().
+ * @param bool   $is_active   Whether the plugin is currently active.
+ * @param bool   $is_self     Whether this is the auditor plugin itself.
+ * @param array  $db_entry    Database footprint entry [ 'count' => int, 'size_formatted' => string ].
+ * @param array  $context     Cached system context (crons, post types, widgets) to minimize repeated queries.
+ * @return array Usage detection result with status, label, confidence, evidence array, and deletable status.
+ */
+function sba_detect_plugin_usage( $plugin_file, $plugin_meta, $is_active, $is_self, $db_entry = [], &$context = [] ) {
+    return SBA_Plugin_Usage_Detector::get_instance()->detect( $plugin_file, $plugin_meta, $is_active, $is_self, $db_entry, $context );
+}
+
+/**
+ * Helper: Resolve the canonical WordPress.org slug for an installed plugin.
+ *
+ * Uses WordPress core's `update_plugins` transient when available (e.g. resolving
+ * single-file core plugins such as `hello.php` -> `hello-dolly`) before falling
+ * back to the folder/file slug.
+ *
+ * @param string $plugin_file Normalized relative plugin file path.
+ * @param string $slug        Fallback folder/file slug.
+ * @return string Canonical WordPress.org slug candidate.
+ */
+function sba_resolve_wporg_plugin_slug( $plugin_file, $slug ) {
+    if ( 'hello.php' === $plugin_file ) {
+        return 'hello-dolly';
+    }
+
+    $update_plugins = get_site_transient( 'update_plugins' );
+    if ( is_object( $update_plugins ) ) {
+        foreach ( [ 'no_update', 'response' ] as $bucket ) {
+            if ( ! empty( $update_plugins->$bucket[ $plugin_file ] ) ) {
+                $entry = $update_plugins->$bucket[ $plugin_file ];
+                $id    = is_object( $entry ) ? ( $entry->id ?? '' ) : ( $entry['id'] ?? '' );
+                $url   = is_object( $entry ) ? ( $entry->url ?? '' ) : ( $entry['url'] ?? '' );
+                $eslug = is_object( $entry ) ? ( $entry->slug ?? '' ) : ( $entry['slug'] ?? '' );
+                if ( $eslug && ( 0 === strpos( (string) $id, 'w.org/plugins/' ) || false !== strpos( (string) $url, 'wordpress.org/plugins/' ) ) ) {
+                    return sanitize_key( $eslug );
+                }
+            }
+        }
+    }
+
+    return sanitize_key( $slug );
+}
+
+/**
+ * Helper: Classify repository authenticity and risk level for a plugin.
+ *
+ * Recognizes the auditor plugin itself, missing dependencies, WordPress.org
+ * verified/outdated plugins, active-theme required/bundled plugins, API transport
+ * failures, and unverified third-party plugins.
+ *
+ * @param array      $params Context parameters for classification.
+ * @return array Normalized repo/risk classification fields and counter deltas.
+ */
+function sba_evaluate_plugin_repo_and_risk( array $params ) {
+    $is_self              = ! empty( $params['is_self'] );
+    $has_dependency_issue = ! empty( $params['has_dependency_issue'] );
+    $dep_check            = $params['dep_check'] ?? [];
+    $is_verified          = ! empty( $params['is_verified'] );
+    $is_api_unavailable   = ! empty( $params['is_api_unavailable'] );
+    $wporg_slug           = $params['wporg_slug'] ?? '';
+    $tested_version       = $params['tested_version'] ?? '';
+    $last_updated_ts      = (int) ( $params['last_updated_ts'] ?? 0 );
+    $last_updated_date    = $params['last_updated_date'] ?? '';
+    $two_years_ago_ts     = (int) ( $params['two_years_ago_ts'] ?? ( time() - ( 2 * YEAR_IN_SECONDS ) ) );
+    $theme_rel            = $params['theme_rel'] ?? null;
+
+    $is_theme_companion = ! empty( $theme_rel['is_companion'] );
+    $is_theme_required  = ! empty( $theme_rel['is_required'] );
+    $theme_name         = $theme_rel['theme_name'] ?? '';
+    $is_outdated        = false;
+
+    $counts = [
+        'verified'    => 0,
+        'unverified'  => 0,
+        'outdated'    => 0,
+        'high_risk'   => 0,
+        'medium_risk' => 0,
+        'low_risk'    => 0,
+    ];
+
+    if ( $is_self ) {
+        $explanation = __( 'Active site bloat auditor and storage maintenance clinic.', 'site-bloat-auditor' );
+        return [
+            'repo_status'          => 'development',
+            'repo_status_label'    => __( 'Local Plugin (This Auditor)', 'site-bloat-auditor' ),
+            'repo_url'             => '',
+            'classification'       => 'self',
+            'classification_label' => __( 'Local Plugin (This Auditor)', 'site-bloat-auditor' ),
+            'risk_level'           => 'Local Active',
+            'risk_explanation'     => $explanation,
+            'risk_note'            => $explanation,
+            'is_outdated'          => false,
+            'counts'               => $counts,
+        ];
+    }
+
+    if ( $has_dependency_issue ) {
+        if ( $is_verified ) {
+            $repo_status       = 'verified';
+            $repo_status_label = __( 'Verified on WP.org', 'site-bloat-auditor' );
+            $repo_url          = 'https://wordpress.org/plugins/' . rawurlencode( $wporg_slug ) . '/';
+            $counts['verified']++;
+        } elseif ( $is_theme_companion ) {
+            $repo_status       = $is_theme_required ? 'theme_core' : 'theme_bundled';
+            $repo_status_label = $is_theme_required
+                /* translators: %s: active theme name */
+                ? sprintf( __( 'Theme Core (%s)', 'site-bloat-auditor' ), $theme_name )
+                /* translators: %s: active theme name */
+                : sprintf( __( 'Theme Bundled (%s)', 'site-bloat-auditor' ), $theme_name );
+            $repo_url          = '';
+            $counts['verified']++;
+        } else {
+            $repo_status       = 'unverified';
+            $repo_status_label = __( 'Unofficial / Not in Directory', 'site-bloat-auditor' );
+            $repo_url          = '';
+            $counts['unverified']++;
+        }
+
+        $counts['medium_risk']++;
+        $dep_note = $dep_check['risk_note'] ?? __( 'Parent plugin missing.', 'site-bloat-auditor' );
+        return [
+            'repo_status'          => $repo_status,
+            'repo_status_label'    => $repo_status_label,
+            'repo_url'             => $repo_url,
+            'classification'       => 'dependency',
+            'classification_label' => __( 'Missing Dependency', 'site-bloat-auditor' ),
+            'risk_level'           => 'Dependency Inactive',
+            'risk_explanation'     => $dep_note,
+            'risk_note'            => $dep_note,
+            'is_outdated'          => false,
+            'counts'               => $counts,
+        ];
+    }
+
+    if ( $is_verified ) {
+        $counts['verified']++;
+        $repo_url = 'https://wordpress.org/plugins/' . rawurlencode( $wporg_slug ) . '/';
+
+        if ( $last_updated_ts > 0 && $last_updated_ts < $two_years_ago_ts ) {
+            $is_outdated = true;
+            $counts['outdated']++;
+            $counts['medium_risk']++;
+            $explanation = sprintf(
+                /* translators: %s: last updated date */
+                __( 'Abandoned: Last updated on %s (over 2 years ago). May lack security patches.', 'site-bloat-auditor' ),
+                $last_updated_date
+            );
+            return [
+                'repo_status'          => 'verified',
+                'repo_status_label'    => __( 'Verified on WP.org', 'site-bloat-auditor' ),
+                'repo_url'             => $repo_url,
+                'classification'       => 'outdated',
+                'classification_label' => __( 'Abandoned / Outdated (2+ years)', 'site-bloat-auditor' ),
+                'risk_level'           => 'Medium',
+                'risk_explanation'     => $explanation,
+                'risk_note'            => $explanation,
+                'is_outdated'          => $is_outdated,
+                'counts'               => $counts,
+            ];
+        }
+
+        $counts['low_risk']++;
+        $explanation = sprintf(
+            /* translators: %s: tested WordPress version */
+            __( 'Official & Verified on WordPress.org (Tested up to WP %s).', 'site-bloat-auditor' ),
+            ! empty( $tested_version ) ? $tested_version : __( 'Recent', 'site-bloat-auditor' )
+        );
+        return [
+            'repo_status'          => 'verified',
+            'repo_status_label'    => __( 'Verified on WP.org', 'site-bloat-auditor' ),
+            'repo_url'             => $repo_url,
+            'classification'       => 'verified',
+            'classification_label' => __( 'Official & Verified', 'site-bloat-auditor' ),
+            'risk_level'           => 'Low',
+            'risk_explanation'     => $explanation,
+            'risk_note'            => $explanation,
+            'is_outdated'          => false,
+            'counts'               => $counts,
+        ];
+    }
+
+    if ( $is_theme_companion ) {
+        $counts['verified']++;
+        $counts['low_risk']++;
+        if ( $is_theme_required ) {
+            $explanation = sprintf(
+                /* translators: %s: active theme name */
+                __( 'Official core plugin required by active theme (%s). Distributed with the theme rather than WordPress.org.', 'site-bloat-auditor' ),
+                $theme_name
+            );
+            return [
+                'repo_status'          => 'theme_core',
+                /* translators: %s: active theme name */
+                'repo_status_label'    => sprintf( __( 'Theme Core (%s)', 'site-bloat-auditor' ), $theme_name ),
+                'repo_url'             => '',
+                'classification'       => 'theme_core',
+                'classification_label' => __( 'Required by Active Theme', 'site-bloat-auditor' ),
+                'risk_level'           => 'Low',
+                'risk_explanation'     => $explanation,
+                'risk_note'            => $explanation,
+                'is_outdated'          => false,
+                'counts'               => $counts,
+            ];
+        }
+
+        $explanation = sprintf(
+            /* translators: %s: active theme name */
+            __( 'Bundled commercial or companion plugin from active theme (%s). Updates are managed via the theme or vendor rather than WordPress.org.', 'site-bloat-auditor' ),
+            $theme_name
+        );
+        return [
+            'repo_status'          => 'theme_bundled',
+            /* translators: %s: active theme name */
+            'repo_status_label'    => sprintf( __( 'Theme Bundled (%s)', 'site-bloat-auditor' ), $theme_name ),
+            'repo_url'             => '',
+            'classification'       => 'theme_bundled',
+            'classification_label' => __( 'Bundled with Active Theme', 'site-bloat-auditor' ),
+            'risk_level'           => 'Low',
+            'risk_explanation'     => $explanation,
+            'risk_note'            => $explanation,
+            'is_outdated'          => false,
+            'counts'               => $counts,
+        ];
+    }
+
+    if ( $is_api_unavailable ) {
+        $counts['medium_risk']++;
+        $explanation = __( 'Could not reach WordPress.org API to verify authenticity (network or timeout error). Re-run audit when online.', 'site-bloat-auditor' );
+        return [
+            'repo_status'          => 'api_unavailable',
+            'repo_status_label'    => __( 'Verification Unavailable', 'site-bloat-auditor' ),
+            'repo_url'             => '',
+            'classification'       => 'api_unavailable',
+            'classification_label' => __( 'API Unreachable', 'site-bloat-auditor' ),
+            'risk_level'           => 'Medium',
+            'risk_explanation'     => $explanation,
+            'risk_note'            => $explanation,
+            'is_outdated'          => false,
+            'counts'               => $counts,
+        ];
+    }
+
+    $counts['unverified']++;
+    $counts['high_risk']++;
+    $explanation = __( 'Unregistered in official repository; potential nulled, custom, or abandoned plugin.', 'site-bloat-auditor' );
+    return [
+        'repo_status'          => 'unverified',
+        'repo_status_label'    => __( 'Unverified / Not in Directory', 'site-bloat-auditor' ),
+        'repo_url'             => '',
+        'classification'       => 'unverified',
+        'classification_label' => __( 'Unverified / Third-Party', 'site-bloat-auditor' ),
+        'risk_level'           => 'High',
+        'risk_explanation'     => $explanation,
+        'risk_note'            => $explanation,
+        'is_outdated'          => false,
+        'counts'               => $counts,
+    ];
+}
+
+/**
  * 16. Plugin Storage & Security Hygiene Audit AJAX Action:
  * Scans installed plugins, calculates folder sizes on disk, cross-references database footprint,
- * checks plugin dependencies, verifies against WordPress.org API, and evaluates risk levels.
+ * checks plugin dependencies, verifies against WordPress.org API, evaluates risk levels,
+ * and detects inspectable usage evidence.
  */
 add_action( 'wp_ajax_sba_scan_plugins_audit', 'sba_ajax_scan_plugins_audit' );
 add_action( 'wp_ajax_sba_scan_plugins', 'sba_ajax_scan_plugins_audit' ); // Alias for dashboard compatibility
@@ -4360,6 +5917,7 @@ function sba_ajax_scan_plugins_audit() {
     global $wp_version;
     $current_wp = preg_replace( '/-.*$/', '', $wp_version );
 
+    wp_cache_delete( 'plugins', 'plugins' );
     $all_plugins    = get_plugins();
     $active_plugins = (array) get_option( 'active_plugins', [] );
     if ( is_multisite() ) {
@@ -4369,20 +5927,26 @@ function sba_ajax_scan_plugins_audit() {
 
     $self_plugin_file   = plugin_basename( __FILE__ );
     $plugins_db_map     = sba_get_plugins_db_footprint( $all_plugins );
+    $theme_context      = SBA_Plugin_Usage_Detector::get_active_theme_context();
+    $usage_context      = [ 'theme_context' => $theme_context ];
 
-    $plugins_data       = [];
-    $total_bytes        = 0;
-    $inactive_bytes     = 0;
-    $unverified_count   = 0;
-    $verified_count     = 0;
-    $outdated_count     = 0;
-    $high_risk_count    = 0;
-    $medium_risk_count  = 0;
-    $low_risk_count     = 0;
-    $dependencies_count = 0;
-    $active_count       = 0;
-    $inactive_count     = 0;
-    $two_years_ago_ts   = time() - ( 2 * YEAR_IN_SECONDS );
+    $plugins_data            = [];
+    $total_bytes             = 0;
+    $inactive_bytes          = 0;
+    $unverified_count        = 0;
+    $verified_count          = 0;
+    $outdated_count          = 0;
+    $high_risk_count         = 0;
+    $medium_risk_count       = 0;
+    $low_risk_count          = 0;
+    $dependencies_count      = 0;
+    $active_count            = 0;
+    $inactive_count          = 0;
+    $usage_detected_count    = 0;
+    $active_no_usage_count   = 0;
+    $usage_unknown_count     = 0;
+    $inactive_no_usage_count = 0;
+    $two_years_ago_ts        = time() - ( 2 * YEAR_IN_SECONDS );
 
     foreach ( $all_plugins as $plugin_file => $plugin_meta ) {
         // 1. Extract Plugin Slug
@@ -4421,8 +5985,9 @@ function sba_ajax_scan_plugins_audit() {
         $db_tables_size       = $db_entry['size_formatted'];
         $db_tables_size_bytes = (int) $db_entry['size_bytes'];
 
-        // 4. Self-Plugin Recognition (Whitelist)
-        $is_self = ( $plugin_file === $self_plugin_file );
+        // 4. Self-Plugin Recognition & Active Theme Relationship
+        $is_self   = ( $plugin_file === $self_plugin_file );
+        $theme_rel = $is_self ? null : SBA_Plugin_Usage_Detector::get_theme_plugin_relation( $plugin_file, $slug, $plugin_meta, $theme_context );
 
         // 5. Missing Dependency Detection
         $dep_check            = sba_check_plugin_dependencies( $plugin_file, $plugin_meta, $active_plugins, $all_plugins );
@@ -4432,12 +5997,13 @@ function sba_ajax_scan_plugins_audit() {
         }
 
         // 6. Query WordPress.org Repository API with Transient Caching (skip for self plugin)
-        $transient_key = 'sba_plugin_repo_' . substr( $slug, 0, 100 );
+        $wporg_slug    = sba_resolve_wporg_plugin_slug( $plugin_file_clean, $slug );
+        $transient_key = 'sba_plugin_repo_' . substr( $wporg_slug, 0, 100 );
         $cached_info   = $is_self ? [ 'found' => false ] : get_transient( $transient_key );
 
-        if ( ! $is_self && ( false === $cached_info || ! is_array( $cached_info ) ) ) {
+        if ( ! $is_self && ( false === $cached_info || ! is_array( $cached_info ) || ! empty( $cached_info['api_error'] ) ) ) {
             $api_response = plugins_api( 'plugin_information', [
-                'slug'   => $slug,
+                'slug'   => $wporg_slug,
                 'fields' => [
                     'tested'          => true,
                     'last_updated'    => true,
@@ -4446,10 +6012,16 @@ function sba_ajax_scan_plugins_audit() {
             ] );
 
             if ( is_wp_error( $api_response ) ) {
-                $cached_info = [
-                    'found' => false,
-                    'error' => sanitize_text_field( $api_response->get_error_message() ),
+                $err_msg            = $api_response->get_error_message();
+                $is_transport_error = ( ! empty( $api_response->get_error_data() ) || false !== stripos( $err_msg, 'unexpected error occurred' ) );
+                $cached_info        = [
+                    'found'     => false,
+                    'api_error' => $is_transport_error,
+                    'error'     => sanitize_text_field( $err_msg ),
                 ];
+                if ( ! $is_transport_error ) {
+                    set_transient( $transient_key, $cached_info, WEEK_IN_SECONDS );
+                }
             } else {
                 $cached_info = [
                     'found'           => true,
@@ -4459,86 +6031,68 @@ function sba_ajax_scan_plugins_audit() {
                     'last_updated'    => sanitize_text_field( $api_response->last_updated ?? '' ),
                     'active_installs' => (int) ( $api_response->active_installs ?? 0 ),
                 ];
+                set_transient( $transient_key, $cached_info, WEEK_IN_SECONDS );
             }
-            set_transient( $transient_key, $cached_info, WEEK_IN_SECONDS );
         }
 
         // 7. Security & Risk Classification
-        $is_verified       = ! empty( $cached_info['found'] );
-        $tested_version    = $cached_info['tested'] ?? '';
-        $last_updated_raw  = $cached_info['last_updated'] ?? '';
-        $last_updated_ts   = ! empty( $last_updated_raw ) ? strtotime( $last_updated_raw ) : 0;
-        $last_updated_date = $last_updated_ts > 0 ? date( 'Y-m-d', $last_updated_ts ) : '';
-        $is_outdated       = false;
+        $is_verified        = ! empty( $cached_info['found'] );
+        $is_api_unavailable = ! empty( $cached_info['api_error'] );
+        $tested_version     = $cached_info['tested'] ?? '';
+        $last_updated_raw   = $cached_info['last_updated'] ?? '';
+        $last_updated_ts    = ! empty( $last_updated_raw ) ? strtotime( $last_updated_raw ) : 0;
+        $last_updated_date  = $last_updated_ts > 0 ? date( 'Y-m-d', $last_updated_ts ) : '';
 
-        if ( $is_self ) {
-            // Whitelist self plugin - do not flag as High Risk
-            $repo_status          = 'development';
-            $repo_status_label    = __( 'Local Plugin (This Auditor)', 'site-bloat-auditor' );
-            $repo_url             = '';
-            $classification       = 'self';
-            $classification_label = __( 'Local Plugin (This Auditor)', 'site-bloat-auditor' );
-            $risk_level           = 'Local Active';
-            $risk_explanation     = __( 'Active site bloat auditor and storage maintenance clinic.', 'site-bloat-auditor' );
-            $risk_note            = $risk_explanation;
-        } elseif ( $has_dependency_issue ) {
-            // Missing Dependency detected: elevate to amber Dependency Inactive
-            $repo_status          = $is_verified ? 'verified' : 'unverified';
-            $repo_status_label    = $is_verified ? __( 'Verified on WP.org', 'site-bloat-auditor' ) : __( 'Unofficial / Not in Directory', 'site-bloat-auditor' );
-            $repo_url             = $is_verified ? 'https://wordpress.org/plugins/' . rawurlencode( $slug ) . '/' : '';
-            $classification       = 'dependency';
-            $classification_label = __( 'Missing Dependency', 'site-bloat-auditor' );
-            $risk_level           = 'Dependency Inactive';
-            $risk_explanation     = $dep_check['risk_note'];
-            $risk_note            = $dep_check['risk_note'];
-            $medium_risk_count++;
-            if ( $is_verified ) {
-                $verified_count++;
-            } else {
-                $unverified_count++;
-            }
-        } elseif ( ! $is_verified ) {
-            // Unregistered on WP.org: High Risk
-            $unverified_count++;
-            $high_risk_count++;
-            $classification       = 'unverified';
-            $classification_label = __( 'Unverified / Third-Party', 'site-bloat-auditor' );
-            $risk_level           = 'High';
-            $risk_explanation     = __( 'Unregistered in official repository; potential nulled, custom, or abandoned plugin.', 'site-bloat-auditor' );
-            $risk_note            = $risk_explanation;
-            $repo_status          = 'unverified';
-            $repo_url             = '';
-        } else {
-            $verified_count++;
-            $repo_status = 'verified';
-            $repo_url    = 'https://wordpress.org/plugins/' . rawurlencode( $slug ) . '/';
+        $risk_eval = sba_evaluate_plugin_repo_and_risk( [
+            'is_self'              => $is_self,
+            'has_dependency_issue' => $has_dependency_issue,
+            'dep_check'            => $dep_check,
+            'is_verified'          => $is_verified,
+            'is_api_unavailable'   => $is_api_unavailable,
+            'wporg_slug'           => $wporg_slug,
+            'tested_version'       => $tested_version,
+            'last_updated_ts'      => $last_updated_ts,
+            'last_updated_date'    => $last_updated_date,
+            'two_years_ago_ts'     => $two_years_ago_ts,
+            'theme_rel'            => $theme_rel,
+        ] );
 
-            // Check if last updated is older than 2 years from today
-            if ( $last_updated_ts > 0 && $last_updated_ts < $two_years_ago_ts ) {
-                $is_outdated = true;
-                $outdated_count++;
-                $medium_risk_count++;
-                $classification       = 'outdated';
-                $classification_label = __( 'Abandoned / Outdated (2+ years)', 'site-bloat-auditor' );
-                $risk_level           = 'Medium';
-                $risk_explanation     = sprintf(
-                    /* translators: %s: last updated date */
-                    __( 'Abandoned: Last updated on %s (over 2 years ago). May lack security patches.', 'site-bloat-auditor' ),
-                    $last_updated_date
-                );
-                $risk_note            = $risk_explanation;
+        $repo_status          = $risk_eval['repo_status'];
+        $repo_status_label    = $risk_eval['repo_status_label'];
+        $repo_url             = $risk_eval['repo_url'];
+        $classification       = $risk_eval['classification'];
+        $classification_label = $risk_eval['classification_label'];
+        $risk_level           = $risk_eval['risk_level'];
+        $risk_explanation     = $risk_eval['risk_explanation'];
+        $risk_note            = $risk_eval['risk_note'];
+        $is_outdated          = $risk_eval['is_outdated'];
+
+        $verified_count    += $risk_eval['counts']['verified'];
+        $unverified_count  += $risk_eval['counts']['unverified'];
+        $outdated_count    += $risk_eval['counts']['outdated'];
+        $high_risk_count   += $risk_eval['counts']['high_risk'];
+        $medium_risk_count += $risk_eval['counts']['medium_risk'];
+        $low_risk_count    += $risk_eval['counts']['low_risk'];
+
+        // 8. Detect inspectable usage evidence
+        $usage_result = sba_detect_plugin_usage( $plugin_file, $plugin_meta, $is_active, $is_self, $db_entry, $usage_context );
+
+        // Track usage status counts
+        $u_status = $usage_result['status'] ?? 'usage_unknown';
+        if ( in_array( $u_status, [ 'functional_usage', 'operational_activity', 'usage_detected', 'usage_detected_inactive' ], true ) ) {
+            $usage_detected_count++;
+        } elseif ( in_array( $u_status, [ 'no_usage_detected', 'active_no_usage', 'configuration_only', 'database_footprint_only' ], true ) ) {
+            if ( $is_active ) {
+                $active_no_usage_count++;
             } else {
-                $low_risk_count++;
-                $classification       = 'verified';
-                $classification_label = __( 'Official & Verified', 'site-bloat-auditor' );
-                $risk_level           = 'Low';
-                $risk_explanation     = sprintf(
-                    /* translators: %s: tested WordPress version */
-                    __( 'Official & Verified on WordPress.org (Tested up to WP %s).', 'site-bloat-auditor' ),
-                    ! empty( $tested_version ) ? $tested_version : __( 'Recent', 'site-bloat-auditor' )
-                );
-                $risk_note            = $risk_explanation;
+                $inactive_no_usage_count++;
             }
+        } elseif ( 'historical_data_only' === $u_status ) {
+            $inactive_no_usage_count++;
+        } elseif ( 'usage_unknown' === $u_status ) {
+            $usage_unknown_count++;
+        } elseif ( 'inactive' === $u_status ) {
+            $inactive_no_usage_count++;
         }
 
         // Return clean unescaped strings from backend; escaped only at DOM render point to prevent &amp; artifacts
@@ -4553,6 +6107,24 @@ function sba_ajax_scan_plugins_audit() {
             'description'          => wp_specialchars_decode( sanitize_text_field( wp_strip_all_tags( $plugin_meta['Description'] ?? '' ) ), ENT_QUOTES ),
             'is_active'            => $is_active,
             'is_self'              => $is_self,
+            'is_deletable'         => $usage_result['is_deletable'],
+            'protect_reason'       => $usage_result['protect_reason'],
+            'usage_status'         => $usage_result['status'],
+            'usage_label'          => $usage_result['label'],
+            'usage_confidence'     => $usage_result['confidence'],
+            'usage_evidence'       => $usage_result['evidence'],
+            'evidence_functional'  => $usage_result['evidence_functional'] ?? [],
+            'evidence_operational' => $usage_result['evidence_operational'] ?? [],
+            'evidence_config'      => $usage_result['evidence_config'] ?? [],
+            'evidence_db'          => $usage_result['evidence_db'] ?? [],
+            'evidence_historical'  => $usage_result['evidence_historical'] ?? [],
+            'db_tables_warning'    => $usage_result['db_tables_warning'] ?? '',
+            'checks_performed'     => $usage_result['checks_performed'] ?? [],
+            'evidence_found'       => $usage_result['evidence_found'] ?? [],
+            'evidence_not_found'   => $usage_result['evidence_not_found'] ?? [],
+            'scan_limitations'     => $usage_result['scan_limitations'] ?? '',
+            'recommended_action'   => $usage_result['recommended_action'] ?? '',
+            'archetype'            => $usage_result['archetype'] ?? null,
             'dependency_issue'     => $has_dependency_issue,
             'dependency_parent'    => $has_dependency_issue ? ( $dep_check['parent_name'] ?? '' ) : '',
             'size_bytes'           => $plugin_bytes,
@@ -4574,6 +6146,9 @@ function sba_ajax_scan_plugins_audit() {
             'risk_level'           => $risk_level,
             'risk_explanation'     => wp_specialchars_decode( $risk_explanation, ENT_QUOTES ),
             'risk_note'            => wp_specialchars_decode( $risk_note, ENT_QUOTES ),
+            'theme_name'           => $theme_rel['theme_name'] ?? '',
+            'is_theme_required'    => ! empty( $theme_rel['is_required'] ),
+            'is_theme_bundled'     => ! empty( $theme_rel['is_bundled'] ),
         ];
     }
 
@@ -4602,21 +6177,514 @@ function sba_ajax_scan_plugins_audit() {
     $inactive_size_mb = round( $inactive_bytes / ( 1024 * 1024 ), 2 );
 
     wp_send_json_success( [
-        'total_count'          => count( $all_plugins ),
-        'active_count'         => $active_count,
-        'inactive_count'       => $inactive_count,
-        'unverified_count'     => $unverified_count,
-        'verified_count'       => $verified_count,
-        'outdated_count'       => $outdated_count,
-        'high_risk_count'      => $high_risk_count,
-        'medium_risk_count'    => $medium_risk_count,
-        'low_risk_count'       => $low_risk_count,
-        'dependencies_count'   => $dependencies_count,
-        'total_risks_count'    => ( $high_risk_count + $medium_risk_count + $dependencies_count ),
-        'total_size_mb'        => $total_size_mb,
-        'total_size_bytes'     => $total_bytes,
-        'total_size_formatted' => size_format( $total_bytes, 2 ),
-        'inactive_size_mb'     => $inactive_size_mb,
-        'plugins'              => $plugins_data,
+        'total_count'             => count( $all_plugins ),
+        'active_count'            => $active_count,
+        'inactive_count'          => $inactive_count,
+        'usage_detected_count'    => $usage_detected_count,
+        'active_no_usage_count'   => $active_no_usage_count,
+        'usage_unknown_count'     => $usage_unknown_count,
+        'inactive_no_usage_count' => $inactive_no_usage_count,
+        'unverified_count'        => $unverified_count,
+        'verified_count'          => $verified_count,
+        'outdated_count'          => $outdated_count,
+        'high_risk_count'         => $high_risk_count,
+        'medium_risk_count'       => $medium_risk_count,
+        'low_risk_count'          => $low_risk_count,
+        'dependencies_count'      => $dependencies_count,
+        'total_risks_count'       => ( $high_risk_count + $medium_risk_count + $dependencies_count ),
+        'total_size_mb'           => $total_size_mb,
+        'total_size_bytes'        => $total_bytes,
+        'total_size_formatted'    => size_format( $total_bytes, 2 ),
+        'inactive_size_mb'        => $inactive_size_mb,
+        'plugins'                 => $plugins_data,
+    ] );
+}
+
+/**
+ * Helper: Check whether a plugin is protected from deletion/deactivation by the active theme.
+ *
+ * @param string $plugin_file   Relative plugin file path.
+ * @param array  $plugin_meta   Plugin metadata headers.
+ * @param array  $theme_context Cached active theme context.
+ * @param string $action        Operation ('delete' or 'deactivate').
+ * @return string Empty string if unprotected, or localized protection message.
+ */
+function sba_get_plugin_protection_notice( $plugin_file, $plugin_meta, $theme_context, $action = 'delete' ) {
+    $plugin_file_clean = wp_normalize_path( $plugin_file );
+    $slug              = ( false !== strpos( $plugin_file_clean, '/' ) )
+        ? dirname( $plugin_file_clean )
+        : sanitize_title( pathinfo( $plugin_file_clean, PATHINFO_FILENAME ) );
+    $slug              = sanitize_key( $slug );
+    $theme_rel         = SBA_Plugin_Usage_Detector::get_theme_plugin_relation( $plugin_file, $slug, $plugin_meta, $theme_context );
+
+    if ( empty( $theme_rel['is_required'] ) ) {
+        return '';
+    }
+
+    $plugin_name = ! empty( $plugin_meta['Name'] ) ? $plugin_meta['Name'] : $plugin_file;
+    $theme_name  = ! empty( $theme_rel['theme_name'] ) ? $theme_rel['theme_name'] : __( 'Active Theme', 'site-bloat-auditor' );
+
+    if ( 'deactivate' === $action ) {
+        return sprintf(
+            /* translators: 1: plugin name, 2: theme name */
+            esc_html__( 'Protected plugin: "%1$s" is required by the active theme "%2$s" and cannot be deactivated.', 'site-bloat-auditor' ),
+            $plugin_name,
+            $theme_name
+        );
+    }
+
+    return sprintf(
+        /* translators: 1: plugin name, 2: theme name */
+        esc_html__( 'Protected plugin: "%1$s" is required by the active theme "%2$s" and cannot be deleted.', 'site-bloat-auditor' ),
+        $plugin_name,
+        $theme_name
+    );
+}
+
+/**
+ * 17. Safe Plugin Deletion AJAX Endpoint:
+ * Safely deactivates and permanently deletes selected plugin files from disk.
+ *
+ * Implements strict security:
+ * - Capability checks: 'delete_plugins', 'manage_options', and 'activate_plugins' (if active)
+ * - Validates nonce: 'sba_nonce'
+ * - Explicit confirmation check: confirmed=yes
+ * - Server-side validation against installed plugins list
+ * - Absolute path traversal rejection and directory boundary enforcement
+ * - Self-plugin protection: Site Bloat & Storage Auditor cannot delete itself
+ * - Multisite network-activated plugin protection
+ * - Must-use and drop-in protection
+ * - Official WordPress delete_plugins() API invocation
+ * - Post-deletion filesystem verification (does not falsely claim success if files remain)
+ * - Database safety: Does NOT drop plugin database tables or delete options automatically
+ */
+add_action( 'wp_ajax_sba_delete_plugin', 'sba_ajax_delete_plugin' );
+add_action( 'wp_ajax_sba_bulk_delete_plugins', 'sba_ajax_delete_plugin' );
+function sba_ajax_delete_plugin() {
+    check_ajax_referer( 'sba_nonce' );
+
+    if ( ! current_user_can( 'delete_plugins' ) || ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( esc_html__( 'Unauthorized permission: delete_plugins and manage_options capabilities required.', 'site-bloat-auditor' ) );
+    }
+
+    $confirmed = isset( $_POST['confirmed'] ) && 'yes' === sanitize_text_field( wp_unslash( $_POST['confirmed'] ) );
+    if ( ! $confirmed ) {
+        wp_send_json_error( esc_html__( 'Explicit confirmation is required to delete plugins.', 'site-bloat-auditor' ) );
+    }
+
+    $raw_plugins = ! empty( $_POST['plugins'] ) ? (array) $_POST['plugins'] : ( ! empty( $_POST['plugin_file'] ) ? [ $_POST['plugin_file'] ] : [] );
+    if ( empty( $raw_plugins ) ) {
+        wp_send_json_error( esc_html__( 'No plugins specified for deletion.', 'site-bloat-auditor' ) );
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+
+    wp_cache_delete( 'plugins', 'plugins' );
+    $all_installed    = get_plugins();
+    $self_plugin_file = plugin_basename( __FILE__ );
+    $theme_context    = SBA_Plugin_Usage_Detector::get_active_theme_context();
+    $results          = [];
+    $errors           = [];
+    $deleted_count    = 0;
+    $skipped_count    = 0;
+    $failed_count     = 0;
+
+    foreach ( $raw_plugins as $raw_plugin_file ) {
+        $plugin_file = sanitize_text_field( wp_unslash( $raw_plugin_file ) );
+
+        // 1. Security Check: Path traversal & format validation
+        if ( empty( $plugin_file ) ||
+             false !== strpos( $plugin_file, '..' ) ||
+             false !== strpos( $plugin_file, '\\' ) ||
+             false !== strpos( $plugin_file, "\0" ) ||
+             0 === strpos( $plugin_file, '/' ) ) {
+            $failed_count++;
+            $errors[] = sprintf(
+                /* translators: %s: invalid plugin file path */
+                esc_html__( 'Security error: Invalid plugin identifier or path traversal attempt "%s".', 'site-bloat-auditor' ),
+                $plugin_file
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'failed',
+                'name'    => $plugin_file,
+                'message' => esc_html__( 'Invalid plugin identifier or path traversal attempt.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        // 2. Validate against installed plugins list on server
+        if ( ! isset( $all_installed[ $plugin_file ] ) ) {
+            $failed_count++;
+            $errors[] = sprintf(
+                /* translators: %s: unrecognized plugin file */
+                esc_html__( 'Plugin "%s" is not recognized as an installed plugin on this site.', 'site-bloat-auditor' ),
+                $plugin_file
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'failed',
+                'name'    => $plugin_file,
+                'message' => esc_html__( 'Plugin not found in installed plugins list.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        $meta        = $all_installed[ $plugin_file ];
+        $plugin_name = ! empty( $meta['Name'] ) ? $meta['Name'] : $plugin_file;
+
+        // 3. Self-Plugin Protection (Site Bloat & Storage Auditor cannot delete itself)
+        if ( $plugin_file === $self_plugin_file || 'site-bloat-auditor' === basename( dirname( $plugin_file ) ) ) {
+            $skipped_count++;
+            $errors[] = sprintf(
+                /* translators: %s: protected plugin name */
+                esc_html__( 'Protected plugin: "%s" is the active audit clinic and cannot be deleted.', 'site-bloat-auditor' ),
+                $plugin_name
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'skipped',
+                'name'    => $plugin_name,
+                'message' => esc_html__( 'Current auditor plugin is protected from deletion.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        // 4. Multisite Network-Activated Protection
+        if ( is_multisite() && function_exists( 'is_plugin_active_for_network' ) && is_plugin_active_for_network( $plugin_file ) ) {
+            $skipped_count++;
+            $errors[] = sprintf(
+                /* translators: %s: network plugin name */
+                esc_html__( 'Network-activated plugin: "%s" cannot be deleted from single-site context. Must be managed by Network Admin.', 'site-bloat-auditor' ),
+                $plugin_name
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'skipped',
+                'name'    => $plugin_name,
+                'message' => esc_html__( 'Network-activated plugin must be managed by network administrator.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        // 4.5. Active Theme Required Core Plugin Protection
+        $theme_protection_msg = sba_get_plugin_protection_notice( $plugin_file, $meta, $theme_context, 'delete' );
+        if ( '' !== $theme_protection_msg ) {
+            $skipped_count++;
+            $errors[] = $theme_protection_msg;
+            $results[ $plugin_file ] = [
+                'status'  => 'skipped',
+                'name'    => $plugin_name,
+                'message' => $theme_protection_msg,
+            ];
+            continue;
+        }
+
+        // 5. Filesystem Existence & Boundary Validation
+        $full_plugin_file = wp_normalize_path( WP_PLUGIN_DIR . '/' . $plugin_file );
+        if ( ! file_exists( $full_plugin_file ) ) {
+            $failed_count++;
+            $errors[] = sprintf(
+                /* translators: %s: plugin name */
+                esc_html__( 'File missing: Plugin file for "%s" does not exist on disk.', 'site-bloat-auditor' ),
+                $plugin_name
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'failed',
+                'name'    => $plugin_name,
+                'message' => esc_html__( 'Plugin file not found on disk.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        $plugin_base_dir = wp_normalize_path( WP_PLUGIN_DIR );
+        if ( ! sba_validate_file_in_dir( $full_plugin_file, $plugin_base_dir ) ) {
+            $failed_count++;
+            $errors[] = sprintf(
+                /* translators: %s: plugin name */
+                esc_html__( 'Security violation: Plugin "%s" resides outside the allowed plugins directory.', 'site-bloat-auditor' ),
+                $plugin_name
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'failed',
+                'name'    => $plugin_name,
+                'message' => esc_html__( 'Plugin path resides outside allowed plugins directory.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        // 6. Safe Deactivation If Active
+        if ( is_plugin_active( $plugin_file ) ) {
+            if ( ! current_user_can( 'activate_plugins' ) ) {
+                $failed_count++;
+                $errors[] = sprintf(
+                    /* translators: %s: plugin name */
+                    esc_html__( 'Permission denied: Cannot deactivate active plugin "%s" prior to deletion.', 'site-bloat-auditor' ),
+                    $plugin_name
+                );
+                $results[ $plugin_file ] = [
+                    'status'  => 'failed',
+                    'name'    => $plugin_name,
+                    'message' => esc_html__( 'User lacks permission to deactivate plugins.', 'site-bloat-auditor' ),
+                ];
+                continue;
+            }
+
+            deactivate_plugins( [ $plugin_file ], false );
+
+            // Strict verification that deactivation succeeded
+            if ( is_plugin_active( $plugin_file ) ) {
+                $failed_count++;
+                $errors[] = sprintf(
+                    /* translators: %s: plugin name */
+                    esc_html__( 'Deactivation failed: Plugin "%s" could not be deactivated. File deletion aborted for safety.', 'site-bloat-auditor' ),
+                    $plugin_name
+                );
+                $results[ $plugin_file ] = [
+                    'status'  => 'failed',
+                    'name'    => $plugin_name,
+                    'message' => esc_html__( 'Failed to deactivate plugin before deletion.', 'site-bloat-auditor' ),
+                ];
+                continue;
+            }
+        }
+
+        // 7. Initialize WP_Filesystem and invoke WordPress Core Plugin Deletion API
+        if ( ! function_exists( 'WP_Filesystem' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+        }
+        WP_Filesystem();
+
+        $del_res = delete_plugins( [ $plugin_file ] );
+
+        // 8. Strict Verification of Deletion Result
+        if ( is_wp_error( $del_res ) ) {
+            $failed_count++;
+            $err_msg  = $del_res->get_error_message();
+            $errors[] = sprintf(
+                /* translators: 1: plugin name, 2: error message */
+                esc_html__( 'WordPress deletion API failed for "%1$s": %2$s', 'site-bloat-auditor' ),
+                $plugin_name,
+                $err_msg
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'failed',
+                'name'    => $plugin_name,
+                'message' => $err_msg,
+            ];
+            continue;
+        }
+
+        // Check if file or directory still exists on disk (catches filesystem lock or read-only failure)
+        $clean_slug = dirname( $plugin_file );
+        $check_dir  = ( '.' !== $clean_slug && '' !== $clean_slug ) ? ( WP_PLUGIN_DIR . '/' . $clean_slug ) : $full_plugin_file;
+
+        if ( file_exists( $check_dir ) || file_exists( $full_plugin_file ) ) {
+            $failed_count++;
+            $errors[] = sprintf(
+                /* translators: %s: plugin name */
+                esc_html__( 'Filesystem error: Plugin files for "%s" could not be removed from disk.', 'site-bloat-auditor' ),
+                $plugin_name
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'failed',
+                'name'    => $plugin_name,
+                'message' => esc_html__( 'Plugin file(s) still exist on disk after deletion attempt.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        // 9. Successfully deleted!
+        $deleted_count++;
+        $results[ $plugin_file ] = [
+            'status'  => 'deleted',
+            'name'    => $plugin_name,
+            'message' => sprintf(
+                /* translators: %s: plugin name */
+                esc_html__( 'Plugin "%s" files successfully deleted.', 'site-bloat-auditor' ),
+                $plugin_name
+            ),
+        ];
+    }
+
+    wp_send_json_success( [
+        'processed_count' => count( $raw_plugins ),
+        'deleted_count'   => $deleted_count,
+        'skipped_count'   => $skipped_count,
+        'failed_count'    => $failed_count,
+        'results'         => $results,
+        'errors'          => $errors,
+    ] );
+}
+
+/**
+ * 18. Safe Plugin Deactivation AJAX Action:
+ * Safely deactivates selected plugins.
+ *
+ * Implements security:
+ * - Capability checks: 'activate_plugins' and 'manage_options'
+ * - Validates nonce: 'sba_nonce'
+ * - Explicit confirmation check: confirmed=yes
+ * - Server-side validation against installed plugins
+ * - Path traversal prevention
+ * - Self-plugin protection: Site Bloat & Storage Auditor cannot deactivate itself
+ * - Multisite network-activated plugin protection
+ * - Post-deactivation verification: confirms !is_plugin_active($plugin_file)
+ */
+add_action( 'wp_ajax_sba_deactivate_plugin', 'sba_ajax_bulk_deactivate_plugins' );
+add_action( 'wp_ajax_sba_bulk_deactivate_plugins', 'sba_ajax_bulk_deactivate_plugins' );
+function sba_ajax_bulk_deactivate_plugins() {
+    check_ajax_referer( 'sba_nonce' );
+
+    if ( ! current_user_can( 'activate_plugins' ) || ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( esc_html__( 'Unauthorized permission: activate_plugins and manage_options capabilities required.', 'site-bloat-auditor' ) );
+    }
+
+    $confirmed = isset( $_POST['confirmed'] ) && 'yes' === sanitize_text_field( wp_unslash( $_POST['confirmed'] ) );
+    if ( ! $confirmed ) {
+        wp_send_json_error( esc_html__( 'Explicit confirmation is required to deactivate plugins.', 'site-bloat-auditor' ) );
+    }
+
+    $raw_plugins = ! empty( $_POST['plugins'] ) ? (array) $_POST['plugins'] : ( ! empty( $_POST['plugin_file'] ) ? [ $_POST['plugin_file'] ] : [] );
+    if ( empty( $raw_plugins ) ) {
+        wp_send_json_error( esc_html__( 'No plugins specified for deactivation.', 'site-bloat-auditor' ) );
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    wp_cache_delete( 'plugins', 'plugins' );
+    $installed_plugins = get_plugins();
+    $self_plugin_file  = plugin_basename( __FILE__ );
+    $theme_context     = SBA_Plugin_Usage_Detector::get_active_theme_context();
+
+    $deactivated_count = 0;
+    $skipped_count     = 0;
+    $failed_count      = 0;
+    $results           = [];
+    $errors            = [];
+
+    foreach ( $raw_plugins as $plugin_file_input ) {
+        $plugin_file = sanitize_text_field( wp_unslash( $plugin_file_input ) );
+
+        // 1. Path Traversal & Normalization Guard
+        if ( false !== strpos( $plugin_file, '..' ) || false !== strpos( $plugin_file, '\\' ) || 0 === strpos( $plugin_file, '/' ) ) {
+            $failed_count++;
+            $errors[] = sprintf(
+                /* translators: %s: plugin identifier */
+                esc_html__( 'Security violation: Path traversal rejected for "%s".', 'site-bloat-auditor' ),
+                $plugin_file
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'failed',
+                'name'    => $plugin_file,
+                'message' => esc_html__( 'Invalid plugin path format.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        // 2. Validate against installed plugins
+        if ( ! isset( $installed_plugins[ $plugin_file ] ) ) {
+            $skipped_count++;
+            $errors[] = sprintf(
+                /* translators: %s: plugin identifier */
+                esc_html__( 'Plugin "%s" is not installed.', 'site-bloat-auditor' ),
+                $plugin_file
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'skipped',
+                'name'    => $plugin_file,
+                'message' => esc_html__( 'Plugin is not recognized as an installed plugin.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        $plugin_name = $installed_plugins[ $plugin_file ]['Name'] ?? $plugin_file;
+
+        // 3. Self-Plugin Protection
+        if ( $plugin_file === $self_plugin_file ) {
+            $skipped_count++;
+            $errors[] = esc_html__( 'Site Bloat & Storage Auditor (this active plugin) cannot deactivate itself.', 'site-bloat-auditor' );
+            $results[ $plugin_file ] = [
+                'status'  => 'skipped',
+                'name'    => $plugin_name,
+                'message' => esc_html__( 'Cannot deactivate the active auditor plugin.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        // 4. Multisite Network Protection
+        if ( is_multisite() && function_exists( 'is_plugin_active_for_network' ) && is_plugin_active_for_network( $plugin_file ) ) {
+            $skipped_count++;
+            $errors[] = sprintf(
+                /* translators: %s: plugin name */
+                esc_html__( 'Cannot deactivate network-activated plugin "%s" from a single-site context.', 'site-bloat-auditor' ),
+                $plugin_name
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'skipped',
+                'name'    => $plugin_name,
+                'message' => esc_html__( 'Network-activated plugin must be managed by the Network Administrator.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        // 4.5. Active Theme Required Core Plugin Protection
+        $theme_protection_msg = sba_get_plugin_protection_notice( $plugin_file, $installed_plugins[ $plugin_file ], $theme_context, 'deactivate' );
+        if ( '' !== $theme_protection_msg ) {
+            $skipped_count++;
+            $errors[] = $theme_protection_msg;
+            $results[ $plugin_file ] = [
+                'status'  => 'skipped',
+                'name'    => $plugin_name,
+                'message' => $theme_protection_msg,
+            ];
+            continue;
+        }
+
+        // 5. Check if already inactive
+        if ( ! is_plugin_active( $plugin_file ) ) {
+            $skipped_count++;
+            $results[ $plugin_file ] = [
+                'status'  => 'skipped',
+                'name'    => $plugin_name,
+                'message' => esc_html__( 'Plugin is already inactive.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        // 6. Perform deactivation
+        deactivate_plugins( [ $plugin_file ], false );
+
+        // 7. Verification
+        if ( is_plugin_active( $plugin_file ) ) {
+            $failed_count++;
+            $errors[] = sprintf(
+                /* translators: %s: plugin name */
+                esc_html__( 'Deactivation failed: Plugin "%s" could not be deactivated.', 'site-bloat-auditor' ),
+                $plugin_name
+            );
+            $results[ $plugin_file ] = [
+                'status'  => 'failed',
+                'name'    => $plugin_name,
+                'message' => esc_html__( 'Deactivation operation failed.', 'site-bloat-auditor' ),
+            ];
+            continue;
+        }
+
+        $deactivated_count++;
+        $results[ $plugin_file ] = [
+            'status'  => 'deactivated',
+            'name'    => $plugin_name,
+            'message' => sprintf(
+                /* translators: %s: plugin name */
+                esc_html__( 'Plugin "%s" successfully deactivated.', 'site-bloat-auditor' ),
+                $plugin_name
+            ),
+        ];
+    }
+
+    wp_send_json_success( [
+        'processed_count'   => count( $raw_plugins ),
+        'deactivated_count' => $deactivated_count,
+        'skipped_count'     => $skipped_count,
+        'failed_count'      => $failed_count,
+        'results'           => $results,
+        'errors'            => $errors,
     ] );
 }

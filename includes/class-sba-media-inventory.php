@@ -110,6 +110,17 @@ class SBA_Media_Inventory {
                         $sha256 = @hash_file( 'sha256', $file_path ) ?: '';
                     }
                     $this->registered_filepaths[ strtolower( $norm_path ) ] = $att_id;
+
+                    // Also register .sba-orig backup and companion WebP file so scan_unattached_files does not falsely flag them
+                    $orig_backup = $file_path . '.sba-orig';
+                    if ( file_exists( $orig_backup ) ) {
+                        $this->registered_filepaths[ strtolower( wp_normalize_path( $orig_backup ) ) ] = $att_id;
+                    }
+
+                    $webp_path = ! empty( $meta['sba_webp']['path'] ) ? $meta['sba_webp']['path'] : preg_replace( '/\.[^.]+$/', '.webp', $file_path );
+                    if ( $webp_path !== $file_path && file_exists( $webp_path ) ) {
+                        $this->registered_filepaths[ strtolower( wp_normalize_path( $webp_path ) ) ] = $att_id;
+                    }
                 } else {
                     $original_status = 'unreadable';
                 }
@@ -297,7 +308,7 @@ class SBA_Media_Inventory {
                         break;
                     }
                 }
-                if ( $skip ) {
+                if ( $skip || substr( $norm_path, -9 ) === '.sba-orig' ) {
                     continue;
                 }
 

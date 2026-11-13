@@ -76,6 +76,9 @@ class SBA_Usage_Detector {
         // 8. Scan Parent Post associations
         $this->scan_parent_posts( $attachments );
 
+        // 9. Scan Universal Image Reference Index (covering generated thumbnails, HTML attributes, CSS, page builders, and rendered output)
+        $this->scan_universal_reference_index( $attachment_ids, $attachment_map );
+
         // Compile classifications for each attachment
         $results = [];
         foreach ( $attachment_ids as $aid ) {
@@ -497,6 +500,78 @@ class SBA_Usage_Detector {
                     'post_status'      => sanitize_key( $p->post_status ),
                     'evidence'         => sprintf( esc_html__( 'Uploaded directly to parent post "%1$s" (ID #%2$d)', 'site-bloat-auditor' ), $title, $pid ),
                 ];
+            }
+        }
+    }
+
+    /**
+     * 9. Scan Universal Image Reference Index (covering generated thumbnails, HTML attributes, CSS, page builders, and rendered output).
+     */
+    private function scan_universal_reference_index( array $attachment_ids, array $attachment_map ) {
+        if ( ! class_exists( 'SBA_Image_Reference_Index' ) ) {
+            return;
+        }
+
+        $ref_engine = SBA_Image_Reference_Index::get_instance();
+
+        foreach ( $attachment_ids as $aid ) {
+            $meta      = wp_get_attachment_metadata( $aid );
+            $file_path = get_attached_file( $aid );
+            $orig_name = $file_path ? wp_basename( $file_path ) : '';
+            $orig_rel  = (string) get_post_meta( $aid, '_wp_attached_file', true );
+
+            // A. Check original file references
+            if ( ! empty( $orig_name ) ) {
+                $orig_url = wp_get_attachment_url( $aid ) ?: '';
+                $check = $ref_engine->check_thumbnail_usage( $orig_name, $orig_rel, $orig_url, $aid, 'full' );
+                if ( $check['found'] ) {
+                    foreach ( $check['references'] as $ref ) {
+                        $this->usage_map[ $aid ][] = [
+                            'source_type'      => sanitize_key( $ref['source_type'] ?? 'post' ),
+                            'source_id'        => (int) ( $ref['source_id'] ?? 0 ),
+                            'source_title'     => sanitize_text_field( $ref['source_title'] ?? '' ),
+                            'detection_method' => sanitize_text_field( $ref['detection_method'] ?? 'universal_reference' ),
+                            'usage_type'       => 'Content',
+                            'confidence'       => 'high',
+                            'post_status'      => sanitize_key( $ref['source_status'] ?? 'publish' ),
+                            'evidence'         => sprintf( esc_html__( 'Original image referenced in "%1$s" via %2$s (%3$s)', 'site-bloat-auditor' ), $ref['source_title'], $ref['detection_method'], $ref['match_type'] ),
+                        ];
+                    }
+                }
+            }
+
+            // B. Check generated thumbnail variation references
+            if ( ! empty( $meta['sizes'] ) && is_array( $meta['sizes'] ) ) {
+                $file_dir   = $file_path ? dirname( $file_path ) : '';
+                $upload_dir = wp_upload_dir();
+                $basedir    = wp_normalize_path( $upload_dir['basedir'] );
+
+                foreach ( $meta['sizes'] as $sz_key => $sz_info ) {
+                    if ( empty( $sz_info['file'] ) ) {
+                        continue;
+                    }
+
+                    $sub_file = $sz_info['file'];
+                    $sub_path = $file_dir ? wp_normalize_path( $file_dir . '/' . $sub_file ) : '';
+                    $sub_rel  = ( $sub_path && 0 === strpos( $sub_path, $basedir ) ) ? ltrim( substr( $sub_path, strlen( $basedir ) ), '/' ) : '';
+                    $sub_url  = wp_get_attachment_image_url( $aid, $sz_key ) ?: '';
+
+                    $sub_check = $ref_engine->check_thumbnail_usage( $sub_file, $sub_rel, $sub_url, $aid, $sz_key );
+                    if ( $sub_check['found'] ) {
+                        foreach ( $sub_check['references'] as $ref ) {
+                            $this->usage_map[ $aid ][] = [
+                                'source_type'      => sanitize_key( $ref['source_type'] ?? 'post' ),
+                                'source_id'        => (int) ( $ref['source_id'] ?? 0 ),
+                                'source_title'     => sanitize_text_field( $ref['source_title'] ?? '' ),
+                                'detection_method' => sanitize_text_field( $ref['detection_method'] ?? 'thumbnail_subsize_reference' ),
+                                'usage_type'       => 'Content',
+                                'confidence'       => 'high',
+                                'post_status'      => sanitize_key( $ref['source_status'] ?? 'publish' ),
+                                'evidence'         => sprintf( esc_html__( 'Generated variation "%1$s" referenced in "%2$s" via %3$s (%4$s)', 'site-bloat-auditor' ), $sub_file, $ref['source_title'], $ref['detection_method'], $ref['match_type'] ),
+                            ];
+                        }
+                    }
+                }
             }
         }
     }
