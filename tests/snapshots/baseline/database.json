@@ -49,6 +49,16 @@
                 "plugin_state": "core"
             },
             {
+                "name": "wp_e_events",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "active_plugin",
+                "source": "Elementor",
+                "likely_plugin": "Elementor",
+                "plugin_state": "active"
+            },
+            {
                 "name": "wp_links",
                 "size_kb": "<masked>",
                 "size_bytes": "<masked>",
@@ -151,6 +161,26 @@
         ],
         "plugins": [
             {
+                "name": "Classic Editor",
+                "version": "1.7.0",
+                "author": "WordPress Contributors",
+                "plugin_file": "classic-editor/classic-editor.php",
+                "slug": "classic-editor",
+                "status": "active",
+                "size_mb": "<masked>",
+                "reason": "Systemic utility / infrastructure plugin"
+            },
+            {
+                "name": "Elementor",
+                "version": "4.4.0",
+                "author": "Elementor.com",
+                "plugin_file": "elementor/elementor.php",
+                "slug": "elementor",
+                "status": "active",
+                "size_mb": "<masked>",
+                "reason": "Active database table data found (wp_e_events)"
+            },
+            {
                 "name": "Site Bloat & Storage Auditor",
                 "version": "1.1.0",
                 "author": "sheetal2311",
@@ -159,6 +189,26 @@
                 "status": "active",
                 "size_mb": "<masked>",
                 "reason": "Systemic utility / infrastructure plugin"
+            },
+            {
+                "name": "TAMESOL Solar Hub",
+                "version": "0.6.0",
+                "author": "TAMESOL",
+                "plugin_file": "tamesol-solar-hub/tamesol-solar-hub.php",
+                "slug": "tamesol-solar-hub",
+                "status": "active",
+                "size_mb": "<masked>",
+                "reason": "Found active usage in post content ([tamesol_solar_hub)"
+            },
+            {
+                "name": "WordPress Importer",
+                "version": "0.9.7",
+                "author": "wordpressdotorg",
+                "plugin_file": "wordpress-importer/wordpress-importer.php",
+                "slug": "wordpress-importer",
+                "status": "active",
+                "size_mb": "<masked>",
+                "reason": "Active and operational"
             }
         ],
         "plugins_total": "<masked>",

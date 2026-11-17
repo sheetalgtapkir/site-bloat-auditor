@@ -1286,6 +1286,14 @@ $sba_last_db_scan              = get_option( 'sba_last_db_scan', [] );
                 </label>
             </div>
 
+            <!-- Explicit confirmation for "Review" items (only weak, draft or trashed references) -->
+            <div id="sba-bulk-modal-review-confirm-wrap" class="sba-modal-safety-notice" style="display: none; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; margin-bottom: 16px;">
+                <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                    <input type="checkbox" id="sba-bulk-modal-review-ack" style="margin-top: 2px;" />
+                    <span id="sba-bulk-modal-review-ack-text"><?php esc_html_e( 'I have verified the selected "Review" items (only unverified, draft or trashed references were found) and confirm they are not needed.', 'site-bloat-auditor' ); ?></span>
+                </label>
+            </div>
+
             <!-- Scrollable File List Container -->
             <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-weight: 600; font-size: 13px; color: #334155;"><?php esc_html_e( 'Selected Files:', 'site-bloat-auditor' ); ?></span>

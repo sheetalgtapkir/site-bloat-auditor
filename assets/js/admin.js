@@ -2389,11 +2389,19 @@
                             sba__('WebP Available', 'WebP Available') +
                             '</div>';
                     }
+                    // Condition label (D1): "Web Optimized" only with a verified optimization record;
+                    // images that were never optimized are "Within Benchmark"; non-images get none.
+                    var condLabel = '';
+                    if (item.condition === 'optimized' || (!item.condition && item.category === 'optimized')) {
+                        condLabel = sba__('Web Optimized', 'Web Optimized');
+                    } else if (item.condition === 'within_benchmark') {
+                        condLabel = sba__('Within Benchmark', 'Within Benchmark');
+                    }
                     sizeHtml = '<div style="font-weight: 700; color: #0f172a; font-size: 13px;">' + safeSize + '</div>' +
-                        '<div class="sba-table-source" style="color: #16a34a; font-weight: 600; margin-top: 4px;">' +
+                        (condLabel ? '<div class="sba-table-source" style="color: #16a34a; font-weight: 600; margin-top: 4px;">' +
                         '<span class="dashicons dashicons-yes" style="font-size: 14px; width: 14px; height: 14px; vertical-align: middle;"></span> ' +
-                        sba__('Web Optimized', 'Web Optimized') +
-                        '</div>' +
+                        condLabel +
+                        '</div>' : '') +
                         webpTagHtml;
                 }
 
@@ -2453,9 +2461,13 @@
                         editButtonHtml +
                         '</div>';
                 } else {
-                    var badgeText = (targetReached || hasBackup || isResized) ?
+                    // Non-images / missing originals: the server's badge ("Not an Image — No Resize
+                    // Needed", "Original File Missing"); images: dimensions status (D1: never a
+                    // generic "Web Optimized" fallback).
+                    var badgeText = (item.condition === 'n/a') ? (item.recommendation_badge || '') :
+                        ((targetReached || hasBackup || isResized) ?
                         sba__('Target dimensions reached — no further resizing needed.', 'Target dimensions reached — no further resizing needed.') :
-                        (item.recommendation_badge || sba__('Web Optimized', 'Web Optimized'));
+                        (item.recommendation_badge || sba__('Within Benchmark', 'Within Benchmark')));
 
                     var rollbackBtnHtml = '';
                     if (hasBackup) {
@@ -2840,13 +2852,24 @@
             e.stopPropagation();
         });
 
+        // Proceed is enabled only with every required explicit confirmation.
+        function updateBulkProceedState(action, eligibleCount) {
+            var $btn = $('#sba-bulk-modal-btn-proceed');
+            var needsReview = ($btn.data('review-count') || 0) > 0;
+            var ok = eligibleCount > 0 &&
+                (action !== 'delete' || $('#sba-bulk-modal-delete-ack').is(':checked')) &&
+                (!needsReview || $('#sba-bulk-modal-review-ack').is(':checked'));
+            $btn.prop('disabled', !ok);
+        }
+        $(document).on('change', '#sba-bulk-modal-review-ack', function () {
+            var $btn = $('#sba-bulk-modal-btn-proceed');
+            updateBulkProceedState($btn.data('action'), ($btn.data('eligible') || []).length);
+        });
+
         // Delete Confirmation Checkbox in Bulk Modal
         $(document).on('change', '#sba-bulk-modal-delete-ack', function () {
-            var isChecked = $(this).is(':checked');
-            var action = $('#sba-bulk-modal-btn-proceed').data('action');
-            if (action === 'delete') {
-                $('#sba-bulk-modal-btn-proceed').prop('disabled', !isChecked);
-            }
+            var $btn = $('#sba-bulk-modal-btn-proceed');
+            updateBulkProceedState($btn.data('action'), ($btn.data('eligible') || []).length);
         });
 
         // Bulk Action Button Click
@@ -2924,6 +2947,9 @@
                     var isQuar = (item.category === 'quarantined' || currentMediaFilter === 'quarantined');
                     if (isQuar) {
                         skipped.push({ item: item, reason: sba__('Already in quarantine trash', 'Already in quarantine trash') });
+                    } else if (item.usage_status === 'used') {
+                        // The server re-checks usage and refuses in-use media anyway.
+                        skipped.push({ item: item, reason: sba__('In use — protected', 'In use — protected') });
                     } else {
                         eligible.push(item);
                         totalQuarBytes += (item.file_size_bytes || item.file_size || item.size || 0);
@@ -2958,6 +2984,11 @@
 
                 var totalDelBytes = 0;
                 selectedObjs.forEach(function (item) {
+                    if (item.usage_status === 'used') {
+                        // In-use media is never permanently deleted (server re-checks and refuses).
+                        skipped.push({ item: item, reason: sba__('In use — protected', 'In use — protected') });
+                        return;
+                    }
                     eligible.push(item);
                     totalDelBytes += (item.file_size_bytes || item.file_size || item.size || 0);
                 });
@@ -2999,15 +3030,14 @@
                 $('#sba-bulk-modal-skipped-notice').hide();
             }
 
-            // Delete Acknowledgment
-            if (action === 'delete') {
-                $('#sba-bulk-modal-delete-confirm-wrap').show();
-                $('#sba-bulk-modal-delete-ack').prop('checked', false);
-                $('#sba-bulk-modal-btn-proceed').prop('disabled', true);
-            } else {
-                $('#sba-bulk-modal-delete-confirm-wrap').hide();
-                $('#sba-bulk-modal-btn-proceed').prop('disabled', eligible.length === 0);
-            }
+            // Delete acknowledgment, plus a separate explicit confirmation for "Review" items.
+            var reviewCount = (action === 'delete' || action === 'quarantine') ?
+                eligible.filter(function (it) { return it.usage_status === 'review'; }).length : 0;
+            $('#sba-bulk-modal-delete-ack, #sba-bulk-modal-review-ack').prop('checked', false);
+            $('#sba-bulk-modal-delete-confirm-wrap').toggle(action === 'delete');
+            $('#sba-bulk-modal-review-confirm-wrap').toggle(reviewCount > 0);
+            $('#sba-bulk-modal-btn-proceed').data('review-count', reviewCount);
+            updateBulkProceedState(action, eligible.length);
 
             // Button styling & data
             var $proceedBtn = $('#sba-bulk-modal-btn-proceed');
@@ -3218,6 +3248,10 @@
                 reqData.attachment_id = attId;
                 reqData.confirmed = 'yes';
             }
+            // "Review" items are sent with explicit confirmation only when the user ticked it.
+            if ((action === 'delete' || action === 'quarantine') && item.usage_status === 'review' && $('#sba-bulk-modal-review-ack').is(':checked')) {
+                reqData.confirm_review = 'yes';
+            }
 
             return $.ajax({
                 url: sbaData.ajax_url,
@@ -3290,6 +3324,7 @@
                         mItem.target_reached = true;
                         mItem.is_oversized = false;
                         mItem.category = 'optimized';
+                        mItem.condition = 'optimized';
                         mItem.category_label = sba__('Optimized', 'Optimized');
                         mItem.badge_class = 'sba-pill-active';
                         var isWebPOpt = (optData && (optData.output_format === 'webp' || optData.is_webp));
@@ -3449,7 +3484,9 @@
 
             var postData = {
                 action: 'sba_empty_quarantine',
-                _ajax_nonce: sbaNonce
+                _ajax_nonce: sbaNonce,
+                confirmed: 'yes',      // Explicit intent, given in the confirm() dialog above.
+                confirm_review: 'yes'  // Server still refuses anything In Use.
             };
 
             if (hasSelection) {
@@ -3501,7 +3538,9 @@
 
             $.post(sbaAjaxUrl, {
                 action: 'sba_empty_quarantine',
-                _ajax_nonce: sbaNonce
+                _ajax_nonce: sbaNonce,
+                confirmed: 'yes',      // Explicit intent, given in the confirm() dialog above.
+                confirm_review: 'yes'  // Server still refuses anything In Use.
             }, function (response) {
                 $btn.prop('disabled', false);
                 if (response.success && response.data) {
@@ -3593,7 +3632,9 @@
             $.post(sbaAjaxUrl, {
                 action: 'sba_empty_quarantine',
                 _ajax_nonce: sbaNonce,
-                attachment_ids: [attId]
+                attachment_ids: [attId],
+                confirmed: 'yes',      // Explicit intent, given in the confirm() dialog above.
+                confirm_review: 'yes'  // Server still refuses anything In Use.
             }, function (response) {
                 if (response.success && response.data) {
                     var qIndex = quarantinedMedia.findIndex(function (m) { return parseInt(m.id, 10) === attId; });
@@ -5288,6 +5329,7 @@
                                 allMedia[i].has_webp = true;
                                 allMedia[i].target_reached = true;
                                 allMedia[i].category = 'optimized';
+                                allMedia[i].condition = 'optimized';
                                 allMedia[i].category_label = sba__('Optimized', 'Optimized');
                                 allMedia[i].recommendation_badge = badgeLabel;
                                 allMedia[i].recommendation_text = sba__('Target dimensions reached — no further resizing needed.', 'Target dimensions reached — no further resizing needed.');
@@ -5529,6 +5571,7 @@
                                 allMedia[i].savings_percent = 0;
                                 if (isOversizedAgain) {
                                     allMedia[i].category = 'oversized';
+                                    allMedia[i].condition = 'oversized';
                                     allMedia[i].category_label = sba__('Needs Resize', 'Needs Resize');
                                     allMedia[i].recommendation_text = data.recommendation_text || sba__('Scale down', 'Scale down');
                                     allMedia[i].recommendation_badge = data.recommendation_badge || sba__('Scale down', 'Scale down');
@@ -5537,10 +5580,12 @@
                                         allMedia[i].recommended_dimensions = data.recommended_dimensions;
                                     }
                                 } else {
-                                    allMedia[i].category = 'optimized';
-                                    allMedia[i].category_label = sba__('Optimized', 'Optimized');
+                                    // Rolled back = the original, unoptimized file (D1): within benchmark, not "optimized".
+                                    allMedia[i].category = 'within_benchmark';
+                                    allMedia[i].condition = 'within_benchmark';
+                                    allMedia[i].category_label = sba__('Within Benchmark', 'Within Benchmark');
                                     allMedia[i].recommendation_text = sba__('Target dimensions reached — no further resizing needed.', 'Target dimensions reached — no further resizing needed.');
-                                    allMedia[i].recommendation_badge = sba__('Web Optimized', 'Web Optimized');
+                                    allMedia[i].recommendation_badge = sba__('Within Benchmark', 'Within Benchmark');
                                     allMedia[i].badge_class = 'sba-pill-active';
                                 }
                                 foundItem = allMedia[i];

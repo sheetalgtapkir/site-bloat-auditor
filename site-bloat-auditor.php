@@ -3,7 +3,7 @@
  * Plugin Name:       Site Bloat & Storage Auditor
  * Plugin URI:        https://github.com/sheetalgtapkir/site-bloat-auditor
  * Description:       Audit orphaned database tables, unused media, and plugin storage bloat with safe backups and quarantine isolation.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            sheetal2311
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit; // Exit if accessed directly.
 }
 
-define( 'SBA_VERSION', '1.1.0' );
+define( 'SBA_VERSION', '1.2.0' );
 define( 'SBA_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SBA_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -30,6 +30,8 @@ require_once SBA_PLUGIN_DIR . 'includes/class-sba-media-inventory.php';
 require_once SBA_PLUGIN_DIR . 'includes/class-sba-duplicate-detector.php';
 require_once SBA_PLUGIN_DIR . 'includes/class-sba-accessibility-auditor.php';
 require_once SBA_PLUGIN_DIR . 'includes/class-sba-image-optimizer.php';
+require_once SBA_PLUGIN_DIR . 'includes/class-sba-media-safety.php';
+SBA_Media_Safety::register_hooks();
 
 /**
  * Load plugin textdomain for internationalization.
@@ -3296,6 +3298,79 @@ function sba_usage_place_link_data( $post_id ) {
 }
 
 /**
+ * Usage status of a media item from its detector classification (D4/D6).
+ *
+ * used   — at least one confirmed or likely reference in live content.
+ * review — only weak evidence (drafts, trash, unverified numeric custom-field values):
+ *          never "safe to delete", never "actively used".
+ * unused — no references found.
+ *
+ * @param string $classification SBA_Usage_Detector classification.
+ * @param bool   $is_used        Whether any usage place was recorded.
+ * @return string used|review|unused
+ */
+function sba_media_usage_status( $classification, $is_used ) {
+    if ( ! $is_used || 'no_references_found' === $classification ) {
+        return 'unused';
+    }
+    if ( 'requires_manual_review' === $classification ) {
+        return 'review';
+    }
+    return 'used';
+}
+
+/**
+ * Whether an optimization record proves the plugin really optimized the file (D1/D2).
+ *
+ * A record counts only when it was written by SBA_Image_Optimizer: the original was
+ * backed up (backup file still on disk) or the stored sizes show the file shrank. A file
+ * format (WebP, JPEG, PNG) or a WebP companion alone is never evidence of optimization.
+ *
+ * @param array|null $record Entry of the sba_optimized_images option.
+ * @return bool
+ */
+function sba_media_has_verified_optimization( $record ) {
+    if ( ! is_array( $record ) ) {
+        return false;
+    }
+    $backup = (string) ( $record['backup_path'] ?? '' );
+    if ( '' !== $backup && file_exists( $backup ) ) {
+        return true;
+    }
+    $orig = (int) ( $record['original_size'] ?? 0 );
+    $opt  = (int) ( $record['optimized_size'] ?? 0 );
+    return $orig > 0 && $opt > 0 && $opt < $orig;
+}
+
+/**
+ * Physical files of an inventory item that exist on disk: original + generated sub-sizes (D8).
+ *
+ * @param array $inv SBA_Media_Inventory item.
+ * @return array<string,int> lower-cased normalized path => bytes.
+ */
+function sba_media_physical_files( array $inv ) {
+    $out  = [];
+    $orig = ! empty( $inv['absolute_path'] ) ? wp_normalize_path( $inv['absolute_path'] ) : '';
+    if ( '' === $orig ) {
+        return $out;
+    }
+    if ( file_exists( $orig ) ) {
+        $out[ strtolower( $orig ) ] = (int) @filesize( $orig );
+    }
+    $dir = dirname( $orig );
+    foreach ( (array) ( $inv['subsizes'] ?? [] ) as $sub ) {
+        if ( empty( $sub['file'] ) || empty( $sub['file_exists'] ) ) {
+            continue;
+        }
+        $path = wp_normalize_path( $dir . '/' . $sub['file'] );
+        if ( file_exists( $path ) ) {
+            $out[ strtolower( $path ) ] = (int) ( $sub['file_size_bytes'] ?? @filesize( $path ) );
+        }
+    }
+    return $out;
+}
+
+/**
  * Human-readable label for a reference's detection method (presentation only).
  *
  * Maps the usage detector's method keys and the Universal Image Reference Index's
@@ -3559,7 +3634,10 @@ function sba_ajax_scan_media_files() {
         ] );
     }
 
-    // 2. Run Evidence-Based Usage Detection across Gutenberg, posts, themes, ACF, Elementor, widgets
+    // 2. Run Evidence-Based Usage Detection across Gutenberg, posts, themes, ACF, Elementor, widgets.
+    // A full media scan always rebuilds the reference index (D9): a cached index (up to
+    // CACHE_TTL old) would miss content changed since it was built and report used files as unused.
+    SBA_Image_Reference_Index::invalidate_cache();
     $usage_detector = new SBA_Usage_Detector();
     $usage_results  = $usage_detector->scan_references( $attachments );
 
@@ -3652,29 +3730,54 @@ function sba_ajax_scan_media_files() {
 
         // Analyze image optimization opportunity
         $opt_analysis = $optimizer->analyze_image( $att_id, $meta, $is_hero );
-        $is_oversized = $opt_analysis['is_oversized'];
         $has_backup   = isset( $backups_map[ $att_id ] );
         $backup_item  = $has_backup ? $backups_map[ $att_id ] : null;
 
-        // Determine item category and recommendation badge
-        if ( ! $is_used ) {
+        // Usage and condition are independent dimensions (D4). Usage: used | review | unused.
+        $usage_status = sba_media_usage_status( $classification, $is_used );
+
+        // Condition (D1–D3): optimized only with a verified optimization record; oversized by
+        // dimensions OR file weight (> 500 KB); n/a for non-images and missing originals.
+        $is_image        = 0 === strpos( (string) $att_post->post_mime_type, 'image/' );
+        $file_on_disk    = ! empty( $inv_item['absolute_path'] ) && file_exists( $inv_item['absolute_path'] );
+        $is_oversized    = $is_image && $file_on_disk && ( ! empty( $opt_analysis['is_oversized_dim'] ) || ! empty( $opt_analysis['is_oversized_bytes'] ) );
+        $is_verified_opt = $is_image && $file_on_disk && sba_media_has_verified_optimization( $backup_item );
+        if ( ! $is_image || ! $file_on_disk ) {
+            $condition = 'n/a';
+        } elseif ( $is_verified_opt ) {
+            $condition = 'optimized';
+        } elseif ( $is_oversized ) {
+            $condition = 'oversized';
+        } else {
+            $condition = 'within_benchmark';
+        }
+        if ( $is_oversized && empty( $opt_analysis['is_oversized_dim'] ) ) {
+            // Weight-only oversize: dimensions are fine, the file needs compression.
+            $opt_analysis['recommendation_text'] = esc_html__( 'Compress — file is larger than 500 KB', 'site-bloat-auditor' );
+            $opt_analysis['target_reached']      = false;
+        }
+
+        // Category drives the existing filter tabs: unused | optimized | oversized | within_benchmark | not_applicable.
+        if ( 'unused' === $usage_status ) {
             $category    = 'unused';
             $badge_class = 'sba-pill-orphaned';
             $badge_text  = esc_html__( 'Review & Quarantine', 'site-bloat-auditor' );
-        } elseif ( $is_oversized ) {
+        } elseif ( 'oversized' === $condition ) {
             $category    = 'oversized';
             $badge_class = 'sba-pill-warning';
             $badge_text  = $opt_analysis['recommendation_text'];
-        } else {
+        } elseif ( 'optimized' === $condition ) {
             $category    = 'optimized';
             $badge_class = 'sba-pill-active';
-            if ( ! empty( $opt_analysis['has_webp'] ) ) {
-                $badge_text = esc_html__( 'Web Optimized (WebP)', 'site-bloat-auditor' );
-            } elseif ( ! empty( $opt_analysis['is_resized'] ) || $has_backup ) {
-                $badge_text = esc_html__( 'Target Dimensions Reached', 'site-bloat-auditor' );
-            } else {
-                $badge_text = esc_html__( 'Web Optimized', 'site-bloat-auditor' );
-            }
+            $badge_text  = ! empty( $opt_analysis['has_webp'] ) ? esc_html__( 'Web Optimized (WebP)', 'site-bloat-auditor' ) : esc_html__( 'Web Optimized', 'site-bloat-auditor' );
+        } elseif ( 'within_benchmark' === $condition ) {
+            $category    = 'within_benchmark';
+            $badge_class = 'sba-pill-active';
+            $badge_text  = esc_html__( 'Within Benchmark', 'site-bloat-auditor' );
+        } else {
+            $category    = 'not_applicable';
+            $badge_class = 'sba-pill-active';
+            $badge_text  = $is_image ? esc_html__( 'Original File Missing', 'site-bloat-auditor' ) : esc_html__( 'Not an Image — No Resize Needed', 'site-bloat-auditor' );
         }
 
         // Optimization history and actual savings
@@ -3798,6 +3901,8 @@ function sba_ajax_scan_media_files() {
             'category'                    => $category,
             'category_label'              => $category_label,
             'classification'              => $classification,
+            'usage_status'                => $usage_status,
+            'condition'                   => $condition,
             'original_width'              => $opt_analysis['original_width'],
             'original_height'             => $opt_analysis['original_height'],
             'original_dimensions'         => $opt_analysis['original_dimensions'],
@@ -3857,30 +3962,14 @@ function sba_ajax_scan_media_files() {
 
     $reclaimable_physical_files = [];
 
-    // A. Collect from unreferenced media items
+    // A. Collect from unreferenced media items (D8: inventory 'file_path' is a display path;
+    // the physical files are 'absolute_path' and its directory + each sub-size 'file').
     foreach ( $unused_items as $u_item ) {
-        $aid = (int) $u_item['id'];
-        $inv = $inv_by_id[ $aid ] ?? null;
-        if ( ! $inv ) {
-            continue;
-        }
-
-        $orig_path = ! empty( $inv['file_path'] ) ? wp_normalize_path( $inv['file_path'] ) : '';
-        if ( $orig_path && file_exists( $orig_path ) ) {
-            $norm_key = strtolower( $orig_path );
-            if ( ! isset( $reclaimable_physical_files[ $norm_key ] ) ) {
-                $reclaimable_physical_files[ $norm_key ] = (int) @filesize( $orig_path );
-            }
-        }
-
-        if ( ! empty( $inv['subsizes'] ) && is_array( $inv['subsizes'] ) ) {
-            foreach ( $inv['subsizes'] as $sub ) {
-                $sub_path = ! empty( $sub['path'] ) ? wp_normalize_path( $sub['path'] ) : '';
-                if ( $sub_path && file_exists( $sub_path ) ) {
-                    $norm_key = strtolower( $sub_path );
-                    if ( ! isset( $reclaimable_physical_files[ $norm_key ] ) ) {
-                        $reclaimable_physical_files[ $norm_key ] = (int) ( $sub['bytes'] ?? @filesize( $sub_path ) );
-                    }
+        $inv = $inv_by_id[ (int) $u_item['id'] ] ?? null;
+        if ( $inv ) {
+            foreach ( sba_media_physical_files( $inv ) as $norm_key => $bytes ) {
+                if ( ! isset( $reclaimable_physical_files[ $norm_key ] ) ) {
+                    $reclaimable_physical_files[ $norm_key ] = $bytes;
                 }
             }
         }
@@ -3893,30 +3982,14 @@ function sba_ajax_scan_media_files() {
                 continue; // Keeper copy is preserved
             }
 
-            $aid = (int) $d_item['id'];
-            $inv = $inv_by_id[ $aid ] ?? null;
+            $inv = $inv_by_id[ (int) $d_item['id'] ] ?? null;
             if ( ! $inv ) {
                 continue;
             }
-
-            $orig_path = ! empty( $inv['file_path'] ) ? wp_normalize_path( $inv['file_path'] ) : '';
-            if ( $orig_path && file_exists( $orig_path ) ) {
-                $norm_key = strtolower( $orig_path );
-                // Deduplicate: If file already counted via unused_items or shared attachment, skip
+            // Deduplicate: files already counted via unused_items or a shared attachment are skipped.
+            foreach ( sba_media_physical_files( $inv ) as $norm_key => $bytes ) {
                 if ( ! isset( $reclaimable_physical_files[ $norm_key ] ) ) {
-                    $reclaimable_physical_files[ $norm_key ] = (int) @filesize( $orig_path );
-                }
-            }
-
-            if ( ! empty( $inv['subsizes'] ) && is_array( $inv['subsizes'] ) ) {
-                foreach ( $inv['subsizes'] as $sub ) {
-                    $sub_path = ! empty( $sub['path'] ) ? wp_normalize_path( $sub['path'] ) : '';
-                    if ( $sub_path && file_exists( $sub_path ) ) {
-                        $norm_key = strtolower( $sub_path );
-                        if ( ! isset( $reclaimable_physical_files[ $norm_key ] ) ) {
-                            $reclaimable_physical_files[ $norm_key ] = (int) ( $sub['bytes'] ?? @filesize( $sub_path ) );
-                        }
-                    }
+                    $reclaimable_physical_files[ $norm_key ] = $bytes;
                 }
             }
         }
@@ -4179,10 +4252,16 @@ function sba_ajax_scan_unattached_files() {
  * @param int $attachment_id Attachment post ID.
  * @return array|WP_Error Item record array on success, WP_Error on failure.
  */
-function sba_quarantine_single_attachment( $attachment_id ) {
+function sba_quarantine_single_attachment( $attachment_id, $confirm_review = false ) {
     $attachment_id = absint( $attachment_id );
     if ( ! $attachment_id ) {
         return new WP_Error( 'invalid_id', esc_html__( 'Invalid attachment ID.', 'site-bloat-auditor' ) );
+    }
+
+    // Fresh server-side usage check; never trusts a classification from an earlier scan.
+    $safety = SBA_Media_Safety::check( $attachment_id, 'quarantine', $confirm_review );
+    if ( is_wp_error( $safety ) ) {
+        return $safety;
     }
 
     $post = get_post( $attachment_id );
@@ -4483,9 +4562,12 @@ function sba_ajax_quarantine_media() {
         wp_send_json_error( esc_html__( 'Invalid attachment ID.', 'site-bloat-auditor' ) );
     }
 
+    SBA_Media_Safety::begin_destructive_request();
+    $confirm_review = SBA_Media_Safety::request_confirms_review();
+
     if ( count( $attachment_ids ) === 1 ) {
         $att_id = reset( $attachment_ids );
-        $res = sba_quarantine_single_attachment( $att_id );
+        $res = sba_quarantine_single_attachment( $att_id, $confirm_review );
         if ( is_wp_error( $res ) ) {
             wp_send_json_error( $res->get_error_message() );
         }
@@ -4509,7 +4591,7 @@ function sba_ajax_quarantine_media() {
     $errors    = [];
 
     foreach ( $attachment_ids as $id ) {
-        $res = sba_quarantine_single_attachment( $id );
+        $res = sba_quarantine_single_attachment( $id, $confirm_review );
         if ( is_wp_error( $res ) ) {
             $failed++;
             $errors[] = sprintf( '#%d: %s', $id, $res->get_error_message() );
@@ -4737,6 +4819,15 @@ function sba_ajax_empty_quarantine() {
     $is_partial = ! empty( $attachment_ids );
     $targets    = $is_partial ? $attachment_ids : array_keys( $quarantined );
 
+    // Permanent deletion requires explicit intent, the emergency lock to be off and the mutex.
+    $confirmed = isset( $_POST['confirmed'] ) && 'yes' === sanitize_text_field( wp_unslash( $_POST['confirmed'] ) );
+    if ( ! $confirmed ) {
+        wp_send_json_error( esc_html__( 'Explicit confirmation is required to permanently delete files.', 'site-bloat-auditor' ) );
+    }
+    SBA_Media_Safety::begin_destructive_request();
+    $confirm_review = SBA_Media_Safety::request_confirms_review();
+    $quarantined    = (array) get_option( 'sba_quarantined_files', [] ); // Re-read under the mutex.
+
     $quarantine_dir = sba_get_quarantine_dir();
     $deleted_count  = 0;
     $freed_bytes    = 0;
@@ -4746,6 +4837,13 @@ function sba_ajax_empty_quarantine() {
     foreach ( $targets as $attachment_id ) {
         $attachment_id = (int) $attachment_id;
         if ( ! isset( $quarantined[ $attachment_id ] ) ) {
+            continue;
+        }
+
+        // Fresh usage check: a quarantined file still referenced by content is never destroyed.
+        $safety = SBA_Media_Safety::check( $attachment_id, 'delete_quarantined', $confirm_review );
+        if ( is_wp_error( $safety ) ) {
+            $errors[] = $safety->get_error_message();
             continue;
         }
 
@@ -4884,6 +4982,9 @@ function sba_ajax_bulk_delete_media() {
         wp_send_json_error( esc_html__( 'Invalid or empty attachment IDs.', 'site-bloat-auditor' ) );
     }
 
+    SBA_Media_Safety::begin_destructive_request();
+    $confirm_review = SBA_Media_Safety::request_confirms_review();
+
     $upload_dir     = wp_upload_dir();
     $quarantine_dir = sba_get_quarantine_dir();
     $basedir        = trailingslashit( wp_normalize_path( $upload_dir['basedir'] ) );
@@ -4899,6 +5000,14 @@ function sba_ajax_bulk_delete_media() {
     foreach ( $attachment_ids as $attachment_id ) {
         $attachment_id = absint( $attachment_id );
         $item_freed    = 0;
+
+        // Fresh server-side usage check immediately before deletion: In Use is never deleted,
+        // Review only with explicit confirmation, test fixtures never (see SBA_Media_Safety).
+        $safety = SBA_Media_Safety::check( $attachment_id, isset( $quarantined[ $attachment_id ] ) ? 'delete_quarantined' : 'delete', $confirm_review );
+        if ( is_wp_error( $safety ) ) {
+            $errors[] = $safety->get_error_message();
+            continue;
+        }
 
         // 1. If item is currently quarantined, delete from quarantine directory
         if ( isset( $quarantined[ $attachment_id ] ) ) {
@@ -5195,6 +5304,12 @@ function sba_prune_attachment_subsizes( $attachment_id, array $raw_size_keys ) {
         return new WP_Error( 'not_found', esc_html__( 'Attachment record not found.', 'site-bloat-auditor' ) );
     }
 
+    // Test fixtures are only modified by their own test lifecycle. (Per-size usage protection below
+    // decides which variants of a used image may go; the parent image itself is never deleted here.)
+    if ( SBA_Media_Safety::is_test_fixture( $attachment_id ) && ! ( defined( 'SBA_ALLOW_TEST_FIXTURE_MEDIA_ACTIONS' ) && SBA_ALLOW_TEST_FIXTURE_MEDIA_ACTIONS ) ) {
+        return new WP_Error( 'sba_fixture_protected', esc_html__( 'This attachment is a regression-test fixture; its files can only be changed by the test suite.', 'site-bloat-auditor' ) );
+    }
+
     $meta = wp_get_attachment_metadata( $attachment_id );
     if ( empty( $meta ) || ! is_array( $meta ) || empty( $meta['sizes'] ) || ! is_array( $meta['sizes'] ) ) {
         return new WP_Error( 'missing_size', esc_html__( 'The requested thumbnail size does not exist in metadata.', 'site-bloat-auditor' ) );
@@ -5388,6 +5503,7 @@ function sba_ajax_delete_single_thumbnail_subsize() {
     $attachment_id = absint( $_POST['attachment_id'] ?? 0 );
     $size_key      = sanitize_key( $_POST['size_key'] ?? '' );
 
+    SBA_Media_Safety::begin_destructive_request();
     $result = sba_prune_attachment_subsizes( $attachment_id, [ $size_key ] );
     if ( is_wp_error( $result ) ) {
         wp_send_json_error( $result->get_error_message() );
@@ -5432,6 +5548,7 @@ function sba_ajax_delete_bulk_thumbnail_subsizes() {
     $attachment_id = absint( $_POST['attachment_id'] ?? 0 );
     $raw_keys      = isset( $_POST['size_keys'] ) ? (array) wp_unslash( $_POST['size_keys'] ) : [];
 
+    SBA_Media_Safety::begin_destructive_request();
     $result = sba_prune_attachment_subsizes( $attachment_id, $raw_keys );
     if ( is_wp_error( $result ) ) {
         wp_send_json_error( $result->get_error_message() );

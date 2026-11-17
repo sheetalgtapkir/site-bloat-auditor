@@ -331,7 +331,9 @@ class SBA_Media_Inventory {
                 }
             }
         } catch ( Exception $e ) {
-            error_log( 'SBA Inventory Scanner Error: ' . $e->getMessage() );
+            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+                error_log( 'SBA Inventory Scanner Error: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            }
         }
 
         $this->discrepancies['unattached_files'] = $unattached;

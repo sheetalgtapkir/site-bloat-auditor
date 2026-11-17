@@ -7,6 +7,7 @@
   .\tests\run.ps1 -Suite lint
   .\tests\run.ps1 -Suite snapshot -Capture
   .\tests\run.ps1 -Fixtures create
+  .\tests\run.ps1 -Fixtures extend             # keep existing fixtures; add missing / new ones
   .\tests\run.ps1 -Fixtures cleanup            # dry run
   .\tests\run.ps1 -Fixtures cleanup -Confirm   # really remove fixtures
 
@@ -16,7 +17,7 @@
 #>
 param(
     [ValidateSet('all', 'lint', 'security', 'regression', 'snapshot')] [string] $Suite = 'all',
-    [ValidateSet('', 'create', 'cleanup')] [string] $Fixtures = '',
+    [ValidateSet('', 'create', 'extend', 'cleanup')] [string] $Fixtures = '',
     [switch] $Capture,
     [switch] $Confirm,
     [string] $Report = ''
@@ -64,6 +65,9 @@ $failures = @()
 if ($Fixtures -eq 'create') {
     Invoke-Php @("$TestsDir\fixtures\create-fixtures.php"); if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 0
 }
+if ($Fixtures -eq 'extend') {
+    Invoke-Php @("$TestsDir\fixtures\create-fixtures.php", '--extend'); if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 0
+}
 if ($Fixtures -eq 'cleanup') {
     $a = @("$TestsDir\fixtures\cleanup-fixtures.php"); if ($Confirm) { $a += '--confirm' }
     Invoke-Php $a; exit $LASTEXITCODE
@@ -98,6 +102,9 @@ if ($Suite -in 'all', 'security') {
     Write-Host "`n=== Security ===" -ForegroundColor Cyan
     Invoke-Php @("$TestsDir\security\test-ajax-security.php") | Select-Object -Last 400 | ForEach-Object { if ($_ -match '\[FAIL\]|==|NOTE|read-only') { $_ } }
     if ($LASTEXITCODE) { $failures += 'security' }
+    Write-Host "`n=== Security: media deletion safeguards ===" -ForegroundColor Cyan
+    Invoke-Php @("$TestsDir\security\test-media-safety.php") | ForEach-Object { if ($_ -match '\[FAIL\]|^==|read-only|^\s{9}') { $_ } }
+    if ($LASTEXITCODE) { $failures += 'media-safety' }
 }
 
 if ($Suite -in 'all', 'regression') {

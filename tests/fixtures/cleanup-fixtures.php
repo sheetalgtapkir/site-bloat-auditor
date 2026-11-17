@@ -21,6 +21,7 @@ if ( 'cli' !== PHP_SAPI ) {
 }
 
 define( 'SBA_TEST_ROLLBACK', false );
+define( 'SBA_ALLOW_TEST_FIXTURE_MEDIA_ACTIONS', true ); // Fixture lifecycle script (see SBA_Media_Safety).
 require dirname( __DIR__ ) . '/bootstrap.php';
 require __DIR__ . '/fixture-definitions.php';
 
@@ -105,8 +106,10 @@ foreach ( $att_ids as $aid ) {
 	$raw     = wp_normalize_path( (string) get_post_meta( $aid, '_wp_attached_file', true ) );
 	$rel_ok  = 0 === strpos( $raw, SBA_FIXTURE_DIR . '/' ) && false === strpos( $raw, '..' );
 	$abs_ok  = 0 === stripos( $raw, trailingslashit( $fx_dir ) ) && false === strpos( $raw, '..' );
-	if ( '' !== $raw && ! $rel_ok && ! $abs_ok ) {
-		fwrite( STDOUT, "  SKIP attachment #$aid (file outside fixture dir: $raw)\n" );
+	// A fixture attachment always has a stored file inside the fixture directory; anything
+	// else (including an empty path) is never treated as a fixture.
+	if ( ! $rel_ok && ! $abs_ok ) {
+		fwrite( STDOUT, "  SKIP attachment #$aid (stored file not inside the fixture dir: " . ( '' === $raw ? '(empty)' : $raw ) . ")\n" );
 		continue;
 	}
 	fwrite( STDOUT, "  attachment #$aid " . wp_basename( $raw ) . ( $abs_ok ? ' (absolute path record)' : '' ) . "\n" );

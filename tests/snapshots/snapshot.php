@@ -21,15 +21,31 @@ if ( 'cli' !== PHP_SAPI ) {
 	exit;
 }
 
-require dirname( __DIR__ ) . '/bootstrap.php';
-require __DIR__ . '/portable.php';
-
 $mode   = $argv[1] ?? '';
 $suites = array_slice( $argv, 2 ) ?: [ 'media', 'database', 'plugins' ];
 if ( ! in_array( $mode, [ 'capture', 'compare', 'sanitize' ], true ) ) {
 	fwrite( STDERR, "Usage: php snapshot.php capture|compare|sanitize [media] [database] [plugins]\n" );
 	exit( 2 );
 }
+
+// Each suite runs in its own PHP process, like each admin AJAX request does: a scan that runs
+// shortcodes (media) would otherwise register scripts that change the plugin audit's evidence.
+if ( count( $suites ) > 1 && 'sanitize' !== $mode ) {
+	$exit = 0;
+	foreach ( $suites as $suite ) {
+		$cmd = escapeshellarg( PHP_BINARY )
+			. ( php_ini_loaded_file() ? ' -c ' . escapeshellarg( php_ini_loaded_file() ) : '' )
+			. ( ini_get( 'mysqli.default_port' ) ? ' -d mysqli.default_port=' . (int) ini_get( 'mysqli.default_port' ) : '' )
+			. ' -d display_startup_errors=0 ' . escapeshellarg( __FILE__ ) . ' ' . escapeshellarg( $mode ) . ' ' . escapeshellarg( $suite );
+		passthru( $cmd, $code );
+		$exit = max( $exit, (int) $code );
+	}
+	exit( $exit );
+}
+
+require dirname( __DIR__ ) . '/bootstrap.php';
+require __DIR__ . '/portable.php';
+require __DIR__ . '/fixture-scope.php';
 
 // Rewrite existing baselines with portable values only (data otherwise unchanged).
 if ( 'sanitize' === $mode ) {
@@ -119,12 +135,23 @@ foreach ( $suites as $suite ) {
 		continue;
 	}
 	$norm = sba_portable( sba_snapshot_normalize( $res['json'], $config[ $suite ]['mask'] ) );
+	if ( 'media' === $suite ) {
+		$norm = sba_fixture_scope_media( $norm ); // Controlled fixtures only, stable fixture keys.
+	}
 	// The database scan orders tables by size; MySQL size estimates drift between runs,
 	// so compare the table set in a stable (name) order.
 	if ( 'database' === $suite && isset( $norm['data']['tables'] ) && is_array( $norm['data']['tables'] ) ) {
 		usort( $norm['data']['tables'], function ( $a, $b ) {
 			return strcmp( (string) ( $a['name'] ?? '' ), (string) ( $b['name'] ?? '' ) );
 		} );
+	}
+	// Plugin lists are compared by identity, not by position (order follows size estimates).
+	foreach ( [ 'database', 'plugins' ] as $s ) {
+		if ( $s === $suite && isset( $norm['data']['plugins'] ) && is_array( $norm['data']['plugins'] ) ) {
+			usort( $norm['data']['plugins'], function ( $a, $b ) {
+				return strcmp( (string) ( $a['plugin_file'] ?? '' ), (string) ( $b['plugin_file'] ?? '' ) );
+			} );
+		}
 	}
 	$file = "$dir/$suite.json";
 

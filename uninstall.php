@@ -144,7 +144,14 @@ function sba_uninstall_cleanup_site() {
         delete_option( 'sba_quarantined_files' );
     }
 
-    // 4. Clean up plugin transients from wp_options using prepared SQL
+    // 4. Plugin state options (no user data). Optimization records (sba_optimized_images,
+    // sba_optimized_images_backup) are deliberately kept: they map each optimized image to its
+    // preserved .sba-orig original, which is never deleted on uninstall.
+    foreach ( [ 'sba_destructive_media_lock', 'sba_media_operation_mutex', 'sba_last_db_scan', 'sba_reclaimed_media_bytes' ] as $sba_option ) {
+        delete_option( $sba_option );
+    }
+
+    // 5. Clean up plugin transients from wp_options using prepared SQL
     $wpdb->query( $wpdb->prepare(
         "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
         $wpdb->esc_like( '_transient_sba_' ) . '%',

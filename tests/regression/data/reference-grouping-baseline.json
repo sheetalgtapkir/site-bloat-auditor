@@ -1,0 +1,277 @@
+{
+    "source":  "tests/snapshots/baseline/media.json at commit 17e53e5 (captured 2026-11-14 against 1.1.0 with the Phase 0 fixture scenario); usage_places of the attachments the references-grouping test uses, unchanged.",
+    "items":  [
+                  {
+                      "id":  832,
+                      "name":  "IMG_0001.jpg",
+                      "relative_path":  "sba-test-fixtures/IMG_0001.jpg",
+                      "classification":  "confirmed_referenced",
+                      "usage_places":  [
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Gutenberg block in page \u0026quot;[SBA TEST] Accessibility Page\u0026quot;"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Embedded image in page \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via wp-image-832"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via Direct HTML \u003cimg\u003e reference (Exact image URL)"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via Direct HTML / content reference (Exact image URL)"
+                                           }
+                                       ]
+                  },
+                  {
+                      "id":  831,
+                      "name":  "alt-equals-filename.jpg",
+                      "relative_path":  "sba-test-fixtures/alt-equals-filename.jpg",
+                      "classification":  "confirmed_referenced",
+                      "usage_places":  [
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Gutenberg block in page \u0026quot;[SBA TEST] Accessibility Page\u0026quot;"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Embedded image in page \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via wp-image-831"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via Direct HTML \u003cimg\u003e reference (Exact image URL)"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via Direct HTML / content reference (Exact image URL)"
+                                           }
+                                       ]
+                  },
+                  {
+                      "id":  830,
+                      "name":  "empty-alt.jpg",
+                      "relative_path":  "sba-test-fixtures/empty-alt.jpg",
+                      "classification":  "confirmed_referenced",
+                      "usage_places":  [
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Gutenberg block in page \u0026quot;[SBA TEST] Accessibility Page\u0026quot;"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Embedded image in page \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via wp-image-830"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via Direct HTML \u003cimg\u003e reference (Exact image URL)"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via Direct HTML / content reference (Exact image URL)"
+                                           }
+                                       ]
+                  },
+                  {
+                      "id":  829,
+                      "name":  "no-alt.jpg",
+                      "relative_path":  "sba-test-fixtures/no-alt.jpg",
+                      "classification":  "confirmed_referenced",
+                      "usage_places":  [
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Gutenberg block in page \u0026quot;[SBA TEST] Accessibility Page\u0026quot;"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Embedded image in page \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via wp-image-829"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via Direct HTML \u003cimg\u003e reference (Exact image URL)"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Accessibility Page",
+                                               "type":  "Content",
+                                               "post_id":  853,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Accessibility Page\u0026quot; via Direct HTML / content reference (Exact image URL)"
+                                           }
+                                       ]
+                  },
+                  {
+                      "id":  825,
+                      "name":  "optimized-real-scaled.jpg",
+                      "relative_path":  "sba-test-fixtures/optimized-real-scaled.jpg",
+                      "classification":  "confirmed_referenced",
+                      "usage_places":  [
+                                           {
+                                               "title":  "[SBA TEST] Size Page",
+                                               "type":  "Content",
+                                               "post_id":  852,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Gutenberg block in page \u0026quot;[SBA TEST] Size Page\u0026quot;"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Size Page",
+                                               "type":  "Content",
+                                               "post_id":  852,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Embedded image in page \u0026quot;[SBA TEST] Size Page\u0026quot; via wp-image-825"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Size Page",
+                                               "type":  "Content",
+                                               "post_id":  852,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Size Page\u0026quot; via Direct HTML \u003cimg\u003e reference (Exact image URL)"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Size Page",
+                                               "type":  "Content",
+                                               "post_id":  852,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;[SBA TEST] Size Page\u0026quot; via Direct HTML / content reference (Exact image URL)"
+                                           },
+                                           {
+                                               "title":  "WordPress Option \"sba_optimized_images\"",
+                                               "type":  "Content",
+                                               "post_id":  0,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;WordPress Option \"sba_optimized_images\"\u0026quot; via Theme option / widget setting (Uploads relative path)"
+                                           },
+                                           {
+                                               "title":  "[SBA TEST] Size Page",
+                                               "type":  "Content",
+                                               "post_id":  852,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Generated variation \u0026quot;optimized-real-1024x591.jpg\u0026quot; referenced in \u0026quot;[SBA TEST] Size Page\u0026quot; via Gutenberg block markup (Block / shortcode size attribute)"
+                                           }
+                                       ]
+                  },
+                  {
+                      "id":  6,
+                      "name":  "b.png",
+                      "relative_path":  "2026/10/b.png",
+                      "classification":  "confirmed_referenced",
+                      "usage_places":  [
+                                           {
+                                               "title":  "Sample Page",
+                                               "type":  "Content",
+                                               "post_id":  2,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Gutenberg block in page \u0026quot;Sample Page\u0026quot;"
+                                           },
+                                           {
+                                               "title":  "Sample Page",
+                                               "type":  "Content",
+                                               "post_id":  2,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Embedded image in page \u0026quot;Sample Page\u0026quot; via wp-image-6"
+                                           },
+                                           {
+                                               "title":  "WordPress Option \"sba_optimized_images\"",
+                                               "type":  "Content",
+                                               "post_id":  0,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Original image referenced in \u0026quot;WordPress Option \"sba_optimized_images\"\u0026quot; via Theme option / widget setting (Uploads relative path)"
+                                           },
+                                           {
+                                               "title":  "Sample Page",
+                                               "type":  "Content",
+                                               "post_id":  2,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Generated variation \u0026quot;b-1024x409.png\u0026quot; referenced in \u0026quot;Sample Page\u0026quot; via Direct HTML \u003cimg\u003e reference (Exact image URL)"
+                                           },
+                                           {
+                                               "title":  "Sample Page",
+                                               "type":  "Content",
+                                               "post_id":  2,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Generated variation \u0026quot;b-1024x409.png\u0026quot; referenced in \u0026quot;Sample Page\u0026quot; via Direct HTML / content reference (Exact image URL)"
+                                           },
+                                           {
+                                               "title":  "Sample Page",
+                                               "type":  "Content",
+                                               "post_id":  2,
+                                               "confidence":  "high",
+                                               "post_status":  "publish",
+                                               "evidence":  "Generated variation \u0026quot;b-1024x409.png\u0026quot; referenced in \u0026quot;Sample Page\u0026quot; via Gutenberg block markup (Block / shortcode size attribute)"
+                                           }
+                                       ]
+                  }
+              ]
+}

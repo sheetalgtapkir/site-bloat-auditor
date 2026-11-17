@@ -36,6 +36,23 @@ if ( ! file_exists( $manifest ) ) {
 $mf = json_decode( (string) file_get_contents( $manifest ), true );
 
 sba_test_login_admin();
+
+// Site-wide scenarios (site logo, image widget) are applied only inside this rolled-back
+// transaction, so the real site's settings are never changed.
+foreach ( sba_fixture_attachments() as $key => $def ) {
+	$aid = (int) ( $mf['attachments'][ $key ]['id'] ?? 0 );
+	if ( empty( $def['setup'] ) || ! $aid ) {
+		continue;
+	}
+	if ( 'custom_logo' === $def['setup'] ) {
+		set_theme_mod( 'custom_logo', $aid );
+	} elseif ( 'widget_media_image' === $def['setup'] ) {
+		$widgets       = (array) get_option( 'widget_media_image', [] );
+		$widgets[9901] = [ 'attachment_id' => $aid, 'url' => wp_get_attachment_url( $aid ), 'size' => 'medium', 'title' => 'SBA test widget' ];
+		update_option( 'widget_media_image', $widgets );
+	}
+}
+
 $res = sba_test_ajax( 'sba_scan_media_files' );
 if ( empty( $res['json']['success'] ) ) {
 	fwrite( STDERR, 'Media scan failed: ' . substr( $res['raw'] . $res['exception'], 0, 500 ) . "\n" );
@@ -117,6 +134,15 @@ foreach ( sba_fixture_attachments() as $key => $def ) {
 		}
 		$results['source'] = SBA_Test_Results::check( "$key: usage location includes \"$want\"", $hit, 'actual: ' . ( $places ? implode( ' | ', array_unique( $places ) ) : 'none' ) );
 	}
+	$titles = array_column( (array) ( $item['usage_places'] ?? [] ), 'title' );
+	foreach ( (array) ( $exp['sources'] ?? [] ) as $src ) {
+		if ( $src !== ( $exp['source'] ?? '' ) ) {
+			$results[ "source:$src" ] = SBA_Test_Results::check( "$key: usage location also includes \"{$post_title[ $src ]}\"", in_array( $post_title[ $src ], $titles, true ), 'actual: ' . ( $places ? implode( ' | ', array_unique( $places ) ) : 'none' ) );
+		}
+	}
+	if ( ! empty( $exp['not_source'] ) ) {
+		$results['not_source'] = SBA_Test_Results::check( "$key: \"{$post_title[ $exp['not_source'] ]}\" is NOT reported as a usage location", ! in_array( $post_title[ $exp['not_source'] ], $titles, true ), 'actual: ' . ( $places ? implode( ' | ', array_unique( $places ) ) : 'none' ) );
+	}
 
 	$check_condition = 'used' === $exp['usage'] || in_array( $exp['condition'], [ 'oversized', 'optimized', 'n/a' ], true );
 	if ( $check_condition && empty( $exp['missing'] ) ) {
@@ -173,6 +199,17 @@ SBA_Test_Results::check( '"Optimized" filter contains no PDFs / audio / video', 
 
 $a11y_sum = (array) ( $d['accessibility']['summary'] ?? [] );
 SBA_Test_Results::check( 'Accessibility response reports how many images were audited', isset( $a11y_sum['total_images_audited'] ), 'total_images_audited=' . ( $a11y_sum['total_images_audited'] ?? 'n/a' ) . ', items with any issue=' . count( (array) ( $d['accessibility']['items'] ?? [] ) ) );
+
+// D12: the plugin's own bookkeeping options (sba_*) and transients are never usage locations.
+$self_refs = [];
+foreach ( (array) $d['all_items'] as $it ) {
+	foreach ( (array) ( $it['usage_places'] ?? [] ) as $pl ) {
+		if ( preg_match( '/Option "(sba_[a-z_]+|_transient_[^"]+|_site_transient_[^"]+)"/', html_entity_decode( (string) $pl['title'] ), $m ) ) {
+			$self_refs[] = $it['name'] . ' via ' . $m[1];
+		}
+	}
+}
+SBA_Test_Results::check( 'No media is kept "in use" by the plugin\'s own records or transients', empty( $self_refs ), implode( '; ', array_slice( $self_refs, 0, 5 ) ) );
 
 $fx_groups = 0;
 foreach ( (array) $d['duplicates'] as $g ) {

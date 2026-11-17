@@ -2,7 +2,8 @@
 /**
  * Regression suite: Media Audit "Usage Context" references grouped per page.
  *
- * A. Baseline snapshot (tests/snapshots/baseline/media.json): the recorded references of
+ * A. Baseline snapshot data (tests/regression/data/reference-grouping-baseline.json, preserved
+ *    from the Phase 0 media baseline at commit 17e53e5): the recorded references of
  *    attachments 829–832 (4 detection matches each, all on page #853) and of attachments
  *    with a global reference (#825, #6) are grouped with sba_group_usage_references().
  *    The baseline pages (#853, #852) no longer exist on this site, so stand-ins with the
@@ -56,11 +57,14 @@ function sba_method_labels( array $page ) {
 
 /* ================================================== A. Baseline snapshot */
 fwrite( STDOUT, "\n-- A. Baseline snapshot: 829–832 / page #853, global references --\n" );
-$baseline = json_decode( (string) file_get_contents( SBA_TESTS_DIR . '/snapshots/baseline/media.json' ), true );
+// The recorded references of the Phase 0 baseline (tests/snapshots/baseline/media.json at commit
+// 17e53e5), preserved unchanged after the media snapshot became fixture-only.
+$baseline = json_decode( (string) file_get_contents( __DIR__ . '/data/reference-grouping-baseline.json' ), true );
 $base_by  = [];
-foreach ( (array) ( $baseline['data']['all_items'] ?? [] ) as $it ) {
+foreach ( (array) ( $baseline['items'] ?? [] ) as $it ) {
 	$base_by[ (int) $it['id'] ] = $it;
 }
+SBA_Test_Results::check( 'Preserved baseline data loaded (6 attachments)', 6 === count( $base_by ) );
 
 // Stand-ins for the (since removed) baseline fixture pages, same IDs and titles.
 foreach ( [ 853 => '[SBA TEST] Accessibility Page', 852 => '[SBA TEST] Size Page' ] as $pid => $title ) {

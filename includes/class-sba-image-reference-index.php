@@ -326,7 +326,8 @@ class SBA_Image_Reference_Index {
             INNER JOIN {$wpdb->posts} p ON m.post_id = p.ID
             WHERE m.meta_key = %s
               AND p.post_status != %s
-        ", '_elementor_data', 'trash' ) );
+              AND p.post_type != %s
+        ", '_elementor_data', 'trash', 'revision' ) ); // D5: revisions hold replaced layouts, not live usage.
 
         foreach ( $elementor_rows as $row ) {
             $index['counts']['postmeta']++;
@@ -360,12 +361,14 @@ class SBA_Image_Reference_Index {
             }
         }
 
-        // B. Custom fields & ACF image fields (where meta_value contains upload path or image extension)
+        // B. Custom fields & ACF image fields (where meta_value contains upload path or image extension).
+        // _elementor_element_cache is Elementor's derived render cache: it can hold markup of
+        // images already removed from _elementor_data (D5), which is scanned above.
         $meta_rows = $wpdb->get_results( "
             SELECT m.post_id, m.meta_key, m.meta_value, p.post_title, p.post_type, p.post_status
             FROM {$wpdb->postmeta} m
             INNER JOIN {$wpdb->posts} p ON m.post_id = p.ID
-            WHERE m.meta_key NOT IN ('_elementor_data', '_elementor_css', '_thumbnail_id', '_sba_quarantined', '_wp_attached_file')
+            WHERE m.meta_key NOT IN ('_elementor_data', '_elementor_css', '_elementor_element_cache', '_thumbnail_id', '_sba_quarantined', '_wp_attached_file')
               AND p.post_type NOT IN ('attachment', 'revision')
               AND p.post_status != 'trash'
               AND (
@@ -407,14 +410,19 @@ class SBA_Image_Reference_Index {
     private function scan_options_sources( array &$index ) {
         global $wpdb;
 
-        // Query widget options, theme mods, and site identity
+        // Query widget options, theme mods, and site identity. This plugin's own bookkeeping
+        // options (sba_*: optimization records, quarantine journal, cached index) and transients
+        // are not usage (D12): an optimization record must not keep its own image "in use".
         $option_rows = $wpdb->get_results( "
             SELECT option_name, option_value
             FROM {$wpdb->options}
-            WHERE option_name LIKE 'widget_%'
-               OR option_name LIKE 'theme_mods_%'
+            WHERE ( option_name LIKE 'widget\_%'
+               OR option_name LIKE 'theme\_mods\_%'
                OR option_name IN ('site_icon', 'custom_logo', 'header_image_data', 'header_image')
-               OR option_value LIKE '%wp-content/uploads%'
+               OR option_value LIKE '%wp-content/uploads%' )
+              AND option_name NOT LIKE 'sba\_%'
+              AND option_name NOT LIKE '\_transient\_%'
+              AND option_name NOT LIKE '\_site\_transient\_%'
             LIMIT 500
         " );
 
@@ -567,8 +575,17 @@ class SBA_Image_Reference_Index {
             }
         }
 
-        // E. WPBakery Shortcode Attributes: [vc_single_image image="123" img_size="thumbnail"]
-        if ( preg_match_all( '/\[vc_single_image\s+[^\]]*?image=["\']?(\d+|https?:\/\/[^\s"\']+)["\']?[^\]]*?img_size=["\']?([^"\']+)["\']?[^\]]*?\]/i', $content, $wpb_matches, PREG_SET_ORDER ) ) {
+        // E. WPBakery Shortcode Attributes: [vc_single_image image="123" img_size="thumbnail"].
+        // Attributes in any order; img_size is optional — WPBakery omits it when the element
+        // uses its default size "thumbnail" (D11: the old pattern required img_size).
+        if ( preg_match_all( '/\[vc_single_image\b([^\]]*)\]/i', $content, $wpb_tags ) ) {
+            $wpb_matches = [];
+            foreach ( $wpb_tags[1] as $attr_str ) {
+                $atts = shortcode_parse_atts( $attr_str );
+                if ( is_array( $atts ) && ! empty( $atts['image'] ) ) {
+                    $wpb_matches[] = [ '', (string) $atts['image'], (string) ( $atts['img_size'] ?? 'thumbnail' ) ];
+                }
+            }
             foreach ( $wpb_matches as $m ) {
                 $img_val   = $m[1];
                 $size_slug = sanitize_key( $m[2] );

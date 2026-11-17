@@ -4,7 +4,7 @@ Tags: database cleanup, media audit, storage optimizer, orphaned tables, bloat c
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -30,7 +30,9 @@ Designed with strict relational safety and disaster recovery principles, the plu
 * **Thumbnail Sub-Size Accounting**: Computes the exact on-disk footprint of original uploaded images along with all registered thumbnail variations (`-150x150`, `-300x300`, `-1024x1024`, etc.).
 * **Safe Quarantine Isolation**: Moves unlinked media and all associated thumbnails to `/wp-content/uploads/sba-quarantine/` with execution blocked (`.htaccess` and `index.php`). Quarantined files are safely hidden from the WordPress Media Library without permanent deletion.
 * **Selective Batch Operations**: Select specific quarantined items using checkboxes to restore them back to the Media Library or permanently delete them to reclaim disk storage.
-* **Dimension & Overhead Benchmark**: Compares image dimensions against responsive container benchmarks (1920px for hero images, 1200px for content) and estimates WebP compression savings.
+* **Dimension & Overhead Benchmark**: Compares image dimensions against responsive container benchmarks (1920px for hero images, 1200px for content) and file weight (over 500 KB), and estimates WebP compression savings. Only images with a verified optimization record are reported as optimized.
+* **Where Is This Image Used?**: Click a file's usage count to see each page that uses it once, with its content type, the detection methods, a link to the public page and a separate Edit link. Global references (site logo, site icon, widgets, options) are listed separately.
+* **Deletion Safety Checks**: Immediately before any quarantine or permanent deletion, the file's usage is re-checked on the server. Files in use are never quarantined or deleted, files that need review require explicit confirmation, and concurrent cleanup requests cannot overlap.
 
 #### 🔌 3. Plugin Storage & Hygiene Audit
 * **Disk & Database Linked Footprint**: Shows on-disk folder size alongside the exact database footprint (e.g. `Disk: 15.83 MB | DB: 4 Tables (340 KB)`) for every installed plugin.
@@ -39,10 +41,10 @@ Designed with strict relational safety and disaster recovery principles, the plu
 * **Self-Plugin Safety Recognition**: Recognizes Site Bloat & Storage Auditor as a safe, local development tool (`Local Plugin (This Auditor) / Local Active`) without false-positive security warnings.
 * **Security Risk Scoring**: Flags unverified, commercial, or abandoned plugins (2+ years without an update) posing maintenance or security vulnerabilities.
 
-#### 🛡️ 4. WordPress.org Security & Compliance
+#### 🛡️ 4. Security
 * **Strict Permission Checks**: Every scan, cleanup, export, and quarantine action requires `manage_options` administrative capabilities.
 * **Cryptographic Nonces**: All AJAX endpoints enforce strict `check_ajax_referer('sba_nonce')` verification.
-* **Zero Leftover Clutter**: Full `uninstall.php` routine removes all transients, options, and temporary quarantine directories upon plugin deletion.
+* **Careful Uninstall**: Deleting the plugin removes its transients, temporary files and settings. Your media is never deleted: quarantined files are restored to the Media Library, and image optimization records are kept with the preserved `.sba-orig` originals.
 
 == Installation ==
 
@@ -76,6 +78,16 @@ It removes older revisions while preserving the 3 most recent edits for each pos
 = Are any external services or tracking scripts included? =
 No. Site Bloat Auditor contains zero telemetry, zero analytics, and zero external tracking. The only outbound request occurs during the Plugin Audit to check the official `api.wordpress.org/plugins/info/1.2/` endpoint, and responses are cached locally for 7 days.
 
+== External services ==
+
+This plugin connects to the WordPress.org Plugin Directory API (`https://api.wordpress.org/plugins/info/1.2/`) to check whether each installed plugin is listed in the official directory, when it was last updated and which WordPress version it was tested with.
+
+* **When**: only when an administrator runs the Plugin Audit. Results are cached for 7 days.
+* **What is sent**: the slug (folder name) of each installed plugin being checked. As with WordPress core's own requests, the User-Agent header contains your WordPress version and your site's address.
+* **Provider**: WordPress.org — [privacy policy](https://wordpress.org/about/privacy/).
+
+No other data is sent, and the plugin contains no telemetry, analytics or tracking.
+
 == Screenshots ==
 
 1. **Database Audit**: Summary KPI cards (Autoload Size, Post Revisions, Expired Transients, Tables Count), 1-click cleaners, and full compressed database backup.
@@ -85,6 +97,13 @@ No. Site Bloat Auditor contains zero telemetry, zero analytics, and zero externa
 5. **Plugin Storage & Authenticity Audit**: Linked file and database footprints, official WordPress.org repository verification, and missing dependency detection.
 
 == Changelog ==
+
+= 1.2.0 =
+* Media Audit: each referenced file shows where it is used — pages are listed once with content type, detection methods and a public View Page link; global references are listed separately.
+* Media Audit: explicit usage status (In Use / Review / Unused) and condition (Optimized / Within Benchmark / Oversized / Not applicable). "Optimized" now requires a verified optimization record; files over 500 KB are reported as oversized.
+* Usage detection: fixed false "in use" results from file-name substrings, post revisions, stale Elementor caches, upload parents and unrelated numeric custom fields; added detection of attachment IDs in serialized fields (e.g. ACF galleries) and WPBakery images without an explicit size; trashed-only references are reported for review; the plugin's own records no longer count as usage.
+* Media Audit: "Potentially Reclaimable" now measures the real files of unused media; a full scan always rebuilds the reference index.
+* Deletion safety: quarantine and permanent deletion re-check usage on the server immediately before acting; in-use media is never quarantined or deleted, review items need explicit confirmation, emptying the quarantine requires confirmation, and concurrent cleanup requests are serialized.
 
 = 1.1.0 =
 * Media Optimization Engine: Added recoverable image optimization with verified backups (.sba-orig), image decode verification, and atomic rollback.
@@ -96,7 +115,7 @@ No. Site Bloat Auditor contains zero telemetry, zero analytics, and zero externa
 * Windows PHP Compatibility: Resilient cross-platform stream readability checks resolving Windows ACL false-negatives.
 
 = 1.0.0 =
-* Initial public release on WordPress.org.
+* Initial release.
 * Database Audit Engine: Orphaned table detector with 30+ plugin signatures, autoload size calculator, expired transient purger, and post revision cleaner.
 * Relational Protection: Strict WordPress Core and active plugin table guardrails.
 * Database Backups: Streaming compressed `.zip` exports for full database and individual tables.

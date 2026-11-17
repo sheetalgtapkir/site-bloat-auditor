@@ -15,8 +15,14 @@
  *   duplicate  true when part of an exact SHA-256 duplicate group
  *   a11y       missing_alt | empty_alt | unhelpful_alt | undescriptive_filename
  *   missing    true when the original file is absent on disk
+ *   sources    every fixture post key that must appear as a usage location
+ *   not_source fixture post key that must NOT appear as a usage location
  *
- * Content placeholders: {id:key} {url:key} {url:key:size} {file:key}
+ * Attachment 'setup' (custom_logo | widget_media_image): a site-wide setting that the test
+ * applies only inside its rolled-back transaction, so real site settings are never changed.
+ *
+ * Content / meta placeholders: {id:key} {url:key} {url:key:size} {file:key} {post:postkey}.
+ * Meta values may be arrays (stored serialized); placeholders inside them are resolved.
  *
  * @package Site_Bloat_Auditor\Tests
  */
@@ -138,6 +144,64 @@ function sba_fixture_attachments() {
 			'expect' => [ 'usage' => 'used', 'source' => 'classic_post', 'kind' => 'audio', 'condition' => 'n/a' ] ],
 		'video-unused'         => [ 'file' => 'video-unused.mp4', 'raw' => 'placeholder',
 			'expect' => [ 'usage' => 'unused', 'kind' => 'video', 'condition' => 'n/a' ] ],
+
+		// ================= Extended scenarios (added with create-fixtures.php --extend) =================
+
+		// --- WPBakery ------------------------------------------------------------------
+		'wpb-sized'            => [ 'file' => 'wpb-sized.jpg', 'spec' => [ 1200, 800 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'wpbakery_page', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => '[vc_single_image image="ID" img_size="large"].' ],
+		'wpb-default'          => [ 'file' => 'wpb-default.jpg', 'spec' => [ 900, 600 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'wpbakery_page', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => '[vc_single_image image="ID"] without img_size (WPBakery default size "thumbnail").' ],
+
+		// --- ACF gallery (serialized list of IDs) -----------------------------------------
+		'acf-gallery-1'        => [ 'file' => 'acf-gallery-1.jpg', 'spec' => [ 800, 600 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'acf_gallery_post', 'kind' => 'image', 'condition' => 'within_benchmark' ] ],
+		'acf-gallery-2'        => [ 'file' => 'acf-gallery-2.jpg', 'spec' => [ 800, 600 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'acf_gallery_post', 'kind' => 'image', 'condition' => 'within_benchmark' ] ],
+
+		// --- Site-wide settings (applied only inside the test transaction, never persisted) ----
+		'site-logo'            => [ 'file' => 'site-logo.png', 'spec' => [ 400, 120 ], 'setup' => 'custom_logo',
+			'expect' => [ 'usage' => 'used', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'Theme custom_logo; set inside the rolled-back test transaction so the real site logo is never changed.' ],
+		'widget-image'         => [ 'file' => 'widget-image.jpg', 'spec' => [ 600, 400 ], 'setup' => 'widget_media_image',
+			'expect' => [ 'usage' => 'used', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'Image widget instance; added inside the rolled-back test transaction only.' ],
+
+		// --- Serialized metadata ------------------------------------------------------------
+		'serialized-url'       => [ 'file' => 'serialized-url.jpg', 'spec' => [ 700, 400 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'serialized_post', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'Image URL nested in a serialized settings array.' ],
+		'serialized-id'        => [ 'file' => 'serialized-id.jpg', 'spec' => [ 700, 400 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'serialized_post', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'Attachment ID under "banner_image_id" in a serialized plugin settings array.' ],
+
+		// --- Shared / reusable / custom plugin field / multiple references ----------------------
+		'shared'               => [ 'file' => 'shared.jpg', 'spec' => [ 800, 500 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'shared_page_a', 'sources' => [ 'shared_page_a', 'shared_page_b' ], 'kind' => 'image', 'condition' => 'within_benchmark' ] ],
+		'reusable-block-img'   => [ 'file' => 'reusable-block-img.jpg', 'spec' => [ 800, 500 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'reusable_block', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'Inside a synced pattern (wp_block) that a page embeds by reference.' ],
+		'plugin-field'         => [ 'file' => 'plugin-field.jpg', 'spec' => [ 640, 400 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'plugin_field_post', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'Custom plugin field "_myplugin_banner_image_id" holding the attachment ID.' ],
+		'multi-ref'            => [ 'file' => 'multi-ref.jpg', 'spec' => [ 1000, 600 ],
+			'expect' => [ 'usage' => 'used', 'source' => 'multi_post_a', 'sources' => [ 'multi_post_a', 'multi_post_b', 'multi_post_c' ], 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'Featured image of one post, content image of another, ACF field of a third.' ],
+
+		// --- Parent relationship is not usage -------------------------------------------------
+		'wrong-parent'         => [ 'file' => 'wrong-parent.jpg', 'spec' => [ 800, 500 ], 'parent' => 'wrong_parent_post',
+			'expect' => [ 'usage' => 'used', 'source' => 'real_user_post', 'not_source' => 'wrong_parent_post', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'Uploaded to one post (post_parent) but displayed only on another.' ],
+
+		// --- Must NOT be protected ------------------------------------------------------------
+		'unrelated-number'     => [ 'file' => 'unrelated-number.jpg', 'spec' => [ 600, 400 ],
+			'expect' => [ 'usage' => 'review', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'A "power_kw" value happens to equal its ID: unverified, never "In Use".' ],
+		'truly-unused'         => [ 'file' => 'truly-unused.jpg', 'spec' => [ 600, 400 ],
+			'expect' => [ 'usage' => 'unused', 'kind' => 'image', 'condition' => 'within_benchmark' ],
+			'why'    => 'No reference anywhere, no parent.' ],
 	];
 }
 
@@ -219,6 +283,76 @@ function sba_fixture_posts() {
 		'a11y_page' => [
 			'post_type' => 'page', 'post_status' => 'publish', 'post_name' => 'a11y-page', 'title' => 'Accessibility Page',
 			'content'   => $img( 'no-alt' ) . $img( 'empty-alt' ) . $img( 'alt-equals-filename' ) . $img( 'img-generic' ),
+		],
+
+		// ================= Extended scenarios =================
+		'wpbakery_page' => [
+			'post_type' => 'page', 'post_status' => 'publish', 'post_name' => 'wpbakery-page', 'title' => 'WPBakery Page',
+			'content'   => '[vc_row][vc_column][vc_single_image image="{id:wpb-sized}" img_size="large"][vc_single_image image="{id:wpb-default}"][/vc_column][/vc_row]',
+		],
+		'acf_gallery_post' => [
+			'post_type' => 'post', 'post_status' => 'publish', 'post_name' => 'acf-gallery', 'title' => 'ACF Gallery',
+			'content'   => '<p>Gallery rendered by the theme template from an ACF gallery field.</p>',
+			'meta'      => [
+				'project_gallery'  => [ '{id:acf-gallery-1}', '{id:acf-gallery-2}' ],
+				'_project_gallery' => 'field_6a1b2c3d4e5f7',
+			],
+		],
+		'serialized_post' => [
+			'post_type' => 'post', 'post_status' => 'publish', 'post_name' => 'serialized-meta', 'title' => 'Serialized Meta',
+			'content'   => '<p>Header and banner come from serialized plugin settings.</p>',
+			'meta'      => [
+				'page_settings'      => [ 'header' => [ 'background' => '{url:serialized-url}', 'height' => 400 ] ],
+				'_myplugin_settings' => [ 'banner_image_id' => '{id:serialized-id}', 'columns' => 3 ],
+			],
+		],
+		'shared_page_a' => [
+			'post_type' => 'page', 'post_status' => 'publish', 'post_name' => 'shared-page-a', 'title' => 'Shared Page A',
+			'content'   => $img( 'shared' ),
+		],
+		'shared_page_b' => [
+			'post_type' => 'page', 'post_status' => 'publish', 'post_name' => 'shared-page-b', 'title' => 'Shared Page B',
+			'content'   => $img( 'shared' ),
+		],
+		'reusable_block' => [
+			'post_type' => 'wp_block', 'post_status' => 'publish', 'post_name' => 'sba-reusable-block', 'title' => 'Reusable Block',
+			'content'   => $img( 'reusable-block-img' ),
+		],
+		'reusable_page' => [
+			'post_type' => 'page', 'post_status' => 'publish', 'post_name' => 'reusable-page', 'title' => 'Reusable Page',
+			'content'   => '<!-- wp:block {"ref":{post:reusable_block}} /-->',
+		],
+		'plugin_field_post' => [
+			'post_type' => 'post', 'post_status' => 'publish', 'post_name' => 'plugin-field', 'title' => 'Plugin Field',
+			'content'   => '<p>Banner rendered by a plugin from its own field.</p>',
+			'meta'      => [ '_myplugin_banner_image_id' => '{id:plugin-field}' ],
+		],
+		'multi_post_a' => [
+			'post_type' => 'post', 'post_status' => 'publish', 'post_name' => 'multi-ref-a', 'title' => 'Multi Ref A',
+			'content'   => '<p>Featured image only.</p>',
+			'thumbnail' => 'multi-ref',
+		],
+		'multi_post_b' => [
+			'post_type' => 'post', 'post_status' => 'publish', 'post_name' => 'multi-ref-b', 'title' => 'Multi Ref B',
+			'content'   => $img( 'multi-ref' ),
+		],
+		'multi_post_c' => [
+			'post_type' => 'post', 'post_status' => 'publish', 'post_name' => 'multi-ref-c', 'title' => 'Multi Ref C',
+			'content'   => '<p>Hero from an ACF image field.</p>',
+			'meta'      => [ 'hero_image' => '{id:multi-ref}', '_hero_image' => 'field_6a1b2c3d4e5f8' ],
+		],
+		'wrong_parent_post' => [
+			'post_type' => 'post', 'post_status' => 'publish', 'post_name' => 'wrong-parent', 'title' => 'Wrong Parent',
+			'content'   => '<p>The image was uploaded here but is not displayed here.</p>',
+		],
+		'real_user_post' => [
+			'post_type' => 'post', 'post_status' => 'publish', 'post_name' => 'real-user', 'title' => 'Real User',
+			'content'   => $img( 'wrong-parent' ),
+		],
+		'unrelated_post' => [
+			'post_type' => 'post', 'post_status' => 'publish', 'post_name' => 'unrelated-number', 'title' => 'Unrelated Number',
+			'content'   => '<p>Inverter rating stored as a plain number.</p>',
+			'meta'      => [ 'power_kw' => '{id:unrelated-number}' ],
 		],
 	];
 }

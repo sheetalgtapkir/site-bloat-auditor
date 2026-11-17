@@ -67,14 +67,16 @@ class SBA_Usage_Detector {
         // 5. Scan Elementor and Page Builder metadata
         $this->scan_page_builders( $attachment_ids );
 
-        // 6. Scan Post Meta custom fields (e.g. ACF image fields)
+        // 6. Scan Post Meta custom fields (e.g. ACF image fields), incl. serialized arrays (D10)
         $this->scan_custom_fields( $attachment_ids );
+        $this->scan_serialized_custom_fields( $attachment_ids );
 
         // 7. Scan Widgets & Sidebars
         $this->scan_widgets( $attachment_ids );
 
-        // 8. Scan Parent Post associations
-        $this->scan_parent_posts( $attachments );
+        // 8. Parent post associations are NOT usage evidence (D5): "uploaded to" records where a
+        // file was first uploaded, not where it is displayed (the former "Attached Parent"
+        // fallback marked such files as likely in use).
 
         // 9. Scan Universal Image Reference Index (covering generated thumbnails, HTML attributes, CSS, page builders, and rendered output)
         $this->scan_universal_reference_index( $attachment_ids, $attachment_map );
@@ -129,6 +131,19 @@ class SBA_Usage_Detector {
                 'badge_class'    => 'sba-pill-warning',
                 'references'     => $references,
                 'warning'        => esc_html__( 'Referenced only in drafts, revisions, or trashed posts. Verify before deleting.', 'site-bloat-auditor' ),
+            ];
+        }
+
+        // Only weak evidence (e.g. a number in an unrecognised custom field that happens to
+        // equal the attachment ID, D7): never "Actively In Use", never "safe to delete".
+        if ( ! $has_confirmed && ! $has_likely ) {
+            return [
+                'classification' => 'requires_manual_review',
+                'label'          => esc_html__( 'Unverified Reference — Review', 'site-bloat-auditor' ),
+                'confidence'     => 'low',
+                'badge_class'    => 'sba-pill-warning',
+                'references'     => $references,
+                'warning'        => esc_html__( 'Only unverified evidence was found (for example a custom field value equal to this file\'s ID). Verify before deleting.', 'site-bloat-auditor' ),
             ];
         }
 
@@ -266,24 +281,28 @@ class SBA_Usage_Detector {
         global $wpdb;
 
         if ( empty( $this->content_posts ) ) {
+            // Trashed content is scanned too (D6): a reference that exists only in the trash is
+            // weak evidence ("review"), never proof that the file is unused.
             $this->content_posts = $wpdb->get_results( $wpdb->prepare( "
                 SELECT ID, post_title, post_content, post_type, post_status
                 FROM {$wpdb->posts}
                 WHERE post_type NOT IN (%s, %s)
-                  AND post_status IN (%s, %s, %s, %s)
+                  AND post_status IN (%s, %s, %s, %s, %s)
                   AND post_content != %s
-            ", 'attachment', 'revision', 'publish', 'future', 'private', 'draft', '' ) );
+            ", 'attachment', 'revision', 'publish', 'future', 'private', 'draft', 'trash', '' ) );
         }
 
         $lookup = array_flip( $attachment_ids );
 
-        // Map filenames and URLs for fallback string checks
+        // Fallback string check (D5): match the attachment's real FILE NAME with its extension
+        // (original, "-scaled" or a generated "-WxH" size), bounded so that "team" does not
+        // match "/our-team/" and "gold-loan.jpg" does not match "gold-loans.jpg". The old
+        // check searched for the attachment slug as a plain substring.
         $filenames = [];
         foreach ( $attachment_ids as $aid ) {
-            $item = $attachment_map[ $aid ] ?? null;
-            $fname = is_object( $item ) ? $item->post_name : ( $item['name'] ?? '' );
-            if ( ! empty( $fname ) ) {
-                $filenames[ $aid ] = $fname;
+            $pattern = self::file_name_pattern( (string) get_post_meta( $aid, '_wp_attached_file', true ) );
+            if ( '' !== $pattern ) {
+                $filenames[ $aid ] = $pattern;
             }
         }
 
@@ -330,8 +349,9 @@ class SBA_Usage_Detector {
             }
 
             // C. Fallback: Filename check if no explicit ID match was found
-            foreach ( $filenames as $aid => $fn ) {
-                if ( empty( $this->usage_map[ $aid ] ) && false !== stripos( $cp->post_content, $fn ) ) {
+            foreach ( $filenames as $aid => $fn_pattern ) {
+                if ( empty( $this->usage_map[ $aid ] ) && preg_match( $fn_pattern, $cp->post_content, $fn_match ) ) {
+                    $fn = $fn_match[0];
                     $this->usage_map[ $aid ][] = [
                         'source_type'      => sanitize_key( $cp->post_type ),
                         'source_id'        => (int) $cp->ID,
@@ -356,8 +376,8 @@ class SBA_Usage_Detector {
             SELECT m.post_id, m.meta_value, p.post_title, p.post_status
             FROM {$wpdb->postmeta} m
             INNER JOIN {$wpdb->posts} p ON m.post_id = p.ID
-            WHERE m.meta_key = %s AND p.post_status != %s
-        ", '_elementor_data', 'trash' ) );
+            WHERE m.meta_key = %s AND p.post_status != %s AND p.post_type != %s
+        ", '_elementor_data', 'trash', 'revision' ) ); // D5: Elementor revisions hold replaced layouts, not live usage.
 
         $lookup = array_flip( $attachment_ids );
         foreach ( $elementor_meta as $em ) {
@@ -406,17 +426,121 @@ class SBA_Usage_Detector {
         foreach ( $meta_rows as $row ) {
             $aid   = (int) $row->meta_value;
             $title = ! empty( $row->post_title ) ? $row->post_title : sprintf( esc_html__( 'Post #%d', 'site-bloat-auditor' ), (int) $row->post_id );
+
+            // D7: a bare number equal to an attachment ID is proof of usage only when the field
+            // is an image/media field — an ACF field (companion "_key" = "field_…") or a key
+            // naming an image, file or media. Otherwise (e.g. a rating or power value) it is
+            // recorded as unverified, low-confidence evidence.
+            $is_acf      = 0 === strpos( (string) get_post_meta( (int) $row->post_id, '_' . $row->meta_key, true ), 'field_' );
+            $is_media    = $is_acf || self::is_media_meta_key( (string) $row->meta_key );
             $this->usage_map[ $aid ][] = [
                 'source_type'      => 'custom_field',
                 'source_id'        => (int) $row->post_id,
                 'source_title'     => sanitize_text_field( $title ),
                 'detection_method' => 'postmeta_' . sanitize_key( $row->meta_key ),
                 'usage_type'       => 'Custom Field',
-                'confidence'       => 'high',
+                'confidence'       => $is_media ? 'high' : 'low',
                 'post_status'      => sanitize_key( $row->post_status ),
-                'evidence'         => sprintf( esc_html__( 'Custom field "%1$s" on post "%2$s" (ID #%3$d)', 'site-bloat-auditor' ), $row->meta_key, $title, (int) $row->post_id ),
+                'evidence'         => $is_media
+                    ? sprintf( esc_html__( 'Custom field "%1$s" on post "%2$s" (ID #%3$d)', 'site-bloat-auditor' ), $row->meta_key, $title, (int) $row->post_id )
+                    : sprintf( esc_html__( 'Unverified: custom field "%1$s" on post "%2$s" (ID #%3$d) holds a number equal to this file\'s ID, but is not an image or media field', 'site-bloat-auditor' ), $row->meta_key, $title, (int) $row->post_id ),
             ];
         }
+    }
+
+    /**
+     * 6b. Attachment IDs inside serialized custom fields (D10), e.g. an ACF gallery
+     * (a:2:{i:0;s:3:"123";i:1;s:3:"124";} with companion "_key" = "field_…") or a plugin
+     * setting array ['banner_image_id' => 123]. An ID counts only when it sits under an
+     * image/media key, or the whole field is an ACF field or a media-named field; numbers
+     * under unrelated keys are ignored.
+     *
+     * @param array $attachment_ids Attachment IDs being scanned.
+     */
+    private function scan_serialized_custom_fields( array $attachment_ids ) {
+        global $wpdb;
+        if ( empty( $attachment_ids ) ) {
+            return;
+        }
+        $lookup = array_flip( $attachment_ids );
+        $rows   = $wpdb->get_results( $wpdb->prepare( "
+            SELECT m.meta_key, m.meta_value, p.ID AS post_id, p.post_title, p.post_status
+            FROM {$wpdb->postmeta} m
+            INNER JOIN {$wpdb->posts} p ON m.post_id = p.ID
+            WHERE m.meta_value LIKE %s
+              AND m.meta_key NOT LIKE %s
+              AND p.post_type NOT IN ('attachment', 'revision')
+              AND p.post_status != 'trash'
+            LIMIT 2000
+        ", 'a:%', $wpdb->esc_like( '_wp_' ) . '%' ) );
+
+        foreach ( $rows as $row ) {
+            $data = is_serialized( $row->meta_value ) ? @unserialize( $row->meta_value, [ 'allowed_classes' => false ] ) : false;
+            if ( ! is_array( $data ) ) {
+                continue;
+            }
+            $field_is_media = self::is_media_meta_key( (string) $row->meta_key )
+                || 0 === strpos( (string) get_post_meta( (int) $row->post_id, '_' . $row->meta_key, true ), 'field_' );
+            $found = [];
+            $walk  = function ( $node, $in_media ) use ( &$walk, &$found, $lookup ) {
+                foreach ( $node as $k => $v ) {
+                    $media_here = $in_media || ( is_string( $k ) && self::is_media_meta_key( $k ) );
+                    if ( is_array( $v ) ) {
+                        $walk( $v, $media_here );
+                    } elseif ( $media_here && ( is_int( $v ) || ( is_string( $v ) && preg_match( '/^\d+$/', $v ) ) ) && isset( $lookup[ (int) $v ] ) ) {
+                        $found[ (int) $v ] = true;
+                    }
+                }
+            };
+            $walk( $data, $field_is_media );
+
+            $title = ! empty( $row->post_title ) ? $row->post_title : sprintf( esc_html__( 'Post #%d', 'site-bloat-auditor' ), (int) $row->post_id );
+            foreach ( array_keys( $found ) as $aid ) {
+                $this->usage_map[ $aid ][] = [
+                    'source_type'      => 'custom_field',
+                    'source_id'        => (int) $row->post_id,
+                    'source_title'     => sanitize_text_field( $title ),
+                    'detection_method' => 'postmeta_' . sanitize_key( $row->meta_key ),
+                    'usage_type'       => 'Custom Field',
+                    'confidence'       => 'high',
+                    'post_status'      => sanitize_key( $row->post_status ),
+                    'evidence'         => sprintf( esc_html__( 'Attachment ID inside serialized custom field "%1$s" on post "%2$s" (ID #%3$d)', 'site-bloat-auditor' ), $row->meta_key, $title, (int) $row->post_id ),
+                ];
+            }
+        }
+    }
+
+    /**
+     * Whether a meta key names an image / media / file field (D7).
+     *
+     * Splits the key into words (snake_case, kebab-case, camelCase) and looks for a media
+     * word, e.g. "hero_image", "_myplugin_banner_image_id", "logoId", "_tsh_datasheet".
+     *
+     * @param string $key Meta key.
+     * @return bool
+     */
+    public static function is_media_meta_key( $key ) {
+        $words = preg_split( '/[^a-z0-9]+/', strtolower( preg_replace( '/([a-z])([A-Z])/', '$1_$2', (string) $key ) ), -1, PREG_SPLIT_NO_EMPTY );
+        $media = [ 'image', 'images', 'img', 'imgs', 'photo', 'photos', 'picture', 'pictures', 'pic', 'logo', 'logos', 'icon', 'icons', 'thumb', 'thumbs', 'thumbnail', 'thumbnails', 'banner', 'banners', 'background', 'bg', 'hero', 'cover', 'poster', 'avatar', 'gallery', 'galleries', 'slide', 'slides', 'slider', 'media', 'attachment', 'attachments', 'file', 'files', 'pdf', 'document', 'documents', 'doc', 'datasheet', 'datasheets', 'brochure', 'download', 'downloads', 'audio', 'video', 'videos' ];
+        return (bool) array_intersect( $words, $media );
+    }
+
+    /**
+     * Regex matching an attachment's file name in text (D5): the original, "-scaled" or a
+     * generated "-{W}x{H}" size, with the same extension, not part of a longer file name.
+     *
+     * @param string $attached_file _wp_attached_file value (e.g. "2026/11/gold-loan.jpg").
+     * @return string Regex, or '' when there is no usable file name.
+     */
+    public static function file_name_pattern( $attached_file ) {
+        $base = wp_basename( (string) $attached_file );
+        $ext  = strtolower( pathinfo( $base, PATHINFO_EXTENSION ) );
+        $name = pathinfo( $base, PATHINFO_FILENAME );
+        $name = preg_replace( '/-scaled$/i', '', $name );
+        if ( '' === $ext || '' === $name ) {
+            return '';
+        }
+        return '/(?<![A-Za-z0-9_.-])' . preg_quote( $name, '/' ) . '(?:-scaled|-\d+x\d+)?\.' . preg_quote( $ext, '/' ) . '(?![A-Za-z0-9_])/i';
     }
 
     /**
@@ -451,55 +575,6 @@ class SBA_Usage_Detector {
                         }
                     }
                 }
-            }
-        }
-    }
-
-    /**
-     * 8. Attached parent post fallback.
-     */
-    private function scan_parent_posts( array $attachments ) {
-        global $wpdb;
-        $parent_ids = [];
-        foreach ( $attachments as $att ) {
-            $parent = is_object( $att ) ? (int) $att->post_parent : (int) ( $att['post_parent'] ?? 0 );
-            if ( $parent > 0 ) {
-                $parent_ids[] = $parent;
-            }
-        }
-        $parent_ids = array_unique( $parent_ids );
-        if ( empty( $parent_ids ) ) {
-            return;
-        }
-
-        $placeholders = implode( ',', array_fill( 0, count( $parent_ids ), '%d' ) );
-        $parents = $wpdb->get_results( $wpdb->prepare( "
-            SELECT ID, post_title, post_status FROM {$wpdb->posts}
-            WHERE ID IN ($placeholders) AND post_status != 'trash'
-        ", ...$parent_ids ) );
-
-        $parent_map = [];
-        foreach ( $parents as $p ) {
-            $parent_map[ (int) $p->ID ] = $p;
-        }
-
-        foreach ( $attachments as $att ) {
-            $aid = is_object( $att ) ? (int) $att->ID : (int) ( $att['id'] ?? $att['ID'] );
-            $pid = is_object( $att ) ? (int) $att->post_parent : (int) ( $att['post_parent'] ?? 0 );
-
-            if ( $pid > 0 && isset( $parent_map[ $pid ] ) && empty( $this->usage_map[ $aid ] ) ) {
-                $p = $parent_map[ $pid ];
-                $title = ! empty( $p->post_title ) ? $p->post_title : sprintf( esc_html__( 'Post #%d', 'site-bloat-auditor' ), $pid );
-                $this->usage_map[ $aid ][] = [
-                    'source_type'      => 'parent_post',
-                    'source_id'        => $pid,
-                    'source_title'     => sanitize_text_field( $title ),
-                    'detection_method' => 'attached_parent',
-                    'usage_type'       => 'Attached Parent',
-                    'confidence'       => 'medium',
-                    'post_status'      => sanitize_key( $p->post_status ),
-                    'evidence'         => sprintf( esc_html__( 'Uploaded directly to parent post "%1$s" (ID #%2$d)', 'site-bloat-auditor' ), $title, $pid ),
-                ];
             }
         }
     }
