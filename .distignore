@@ -1,0 +1,10 @@
+# Files excluded from the distributable plugin ZIP (wp dist-archive / release builds).
+/.git
+/.gitignore
+/.gitattributes
+/.distignore
+/tests
+/scratch
+/CLAUDE.md
+/node_modules
+*.zip

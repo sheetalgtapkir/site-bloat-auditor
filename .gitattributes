@@ -1,0 +1,12 @@
+# Keep development-only files out of `git archive` release exports.
+/tests          export-ignore
+/tests/**       export-ignore
+/scratch        export-ignore
+/scratch/**     export-ignore
+/CLAUDE.md      export-ignore
+/.distignore    export-ignore
+/.gitattributes export-ignore
+/.gitignore     export-ignore
+
+# Preserve existing line endings exactly (no normalisation of tracked files).
+* -text
