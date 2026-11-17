@@ -105,6 +105,9 @@ if ($Suite -in 'all', 'regression') {
     $a = @("$TestsDir\regression\test-media-audit.php"); if ($Report) { $a += "--report=$Report" }
     Invoke-Php $a
     if ($LASTEXITCODE) { $failures += 'regression' }
+    Write-Host "`n=== Regression: media references grouping ===" -ForegroundColor Cyan
+    Invoke-Php @("$TestsDir\regression\test-media-references.php")
+    if ($LASTEXITCODE) { $failures += 'references' }
 }
 
 if ($Suite -in 'all', 'snapshot') {

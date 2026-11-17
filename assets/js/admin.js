@@ -162,6 +162,286 @@
             });
         });
 
+        /* ---------- Media audit: Usage Context references dialog ---------- */
+
+        // Attachment ID => { name, groups } for the rows currently rendered.
+        var sbaMediaRefStore = {};
+        var sbaMediaRefTrigger = null;
+
+        function sbaSafeHttpUrl(url) {
+            return (typeof url === 'string' && /^https?:\/\//i.test(url)) ? url : '';
+        }
+
+        function sbaPlural(n, one, many) {
+            return n + ' ' + (n === 1 ? one : many);
+        }
+
+        // Server-grouped references, or (for results cached before grouping existed) a grouping
+        // of usage_places by post ID. The fallback has no frontend URLs.
+        function sbaUsageGroupsFor(item) {
+            if (item.usage_groups && $.isArray(item.usage_groups.pages)) {
+                return item.usage_groups;
+            }
+            var pages = {}, order = [], other = {}, otherOrder = [];
+            $.each(item.usage_places || [], function (_, place) {
+                var pid = parseInt(place.post_id, 10) || 0;
+                var method = place.type || sba__('Content', 'Content');
+                var conf = place.confidence || 'medium';
+                if (pid > 0) {
+                    if (!pages[pid]) {
+                        pages[pid] = { post_id: pid, title: place.title || ('#' + pid), post_type_label: place.post_type_label || '', post_status: place.post_status || '', status_label: place.post_status || '', is_public: false, viewable_type: true, view_url: '', edit_url: sbaSafeHttpUrl(place.edit_url), confidence: conf, methods: [], seen: {}, fallback: true };
+                        order.push(pid);
+                    }
+                    if (!pages[pid].seen[method]) {
+                        pages[pid].seen[method] = true;
+                        pages[pid].methods.push({ label: method, confidence: conf });
+                    }
+                    if (conf === 'high') {
+                        pages[pid].confidence = 'high';
+                    }
+                } else {
+                    var key = method + '|' + (place.title || '');
+                    if (!other[key]) {
+                        other[key] = { label: method, title: place.title || '', scope: 'global', confidence: conf, evidence: place.evidence || '' };
+                        otherOrder.push(key);
+                    }
+                }
+            });
+            var list = order.map(function (pid) { var p = pages[pid]; p.confirmed = p.confidence === 'high'; delete p.seen; return p; });
+            var confirmed = list.filter(function (p) { return p.confirmed; }).length;
+            return {
+                pages: list,
+                other: otherOrder.map(function (k) { return other[k]; }),
+                page_count: list.length,
+                confirmed_count: confirmed,
+                potential_count: list.length - confirmed,
+                other_count: otherOrder.length,
+                match_count: (item.usage_places || []).length,
+                fallback: true
+            };
+        }
+
+        // Duplicates view: the attachment's grouping from the same scan (all_items), or a grouping
+        // of the duplicate item's own references when it is not listed there.
+        function sbaDuplicateUsageGroups(item) {
+            var id = parseInt(item.id, 10);
+            for (var i = 0; i < allMedia.length; i++) {
+                if (parseInt(allMedia[i].id, 10) === id && allMedia[i].usage_groups) {
+                    return allMedia[i].usage_groups;
+                }
+            }
+            if (item.usage_groups) {
+                return item.usage_groups;
+            }
+            var places = $.map(item.references || [], function (r) {
+                return { post_id: r.source_id !== undefined ? r.source_id : r.post_id, title: r.source_title || r.title, type: r.usage_type || r.type, confidence: r.confidence, post_status: r.post_status, evidence: r.evidence };
+            });
+            return places.length ? sbaUsageGroupsFor({ usage_places: places }) : null;
+        }
+
+        // Table cell: unique page / other-location counts (opens the dialog) + the first titles.
+        function sbaUsageSummaryHtml(attId, g) {
+            var parts = [];
+            if (g.page_count > 0) {
+                parts.push(sbaPlural(g.page_count, sba__('page', 'page'), sba__('pages', 'pages')));
+            }
+            if (g.other_count > 0) {
+                parts.push(sbaPlural(g.other_count, sba__('other location', 'other location'), sba__('other locations', 'other locations')));
+            }
+            var label = sba__('Used on', 'Used on') + ' ' + parts.join(' + ');
+            var html = '<button type="button" class="button-link sba-usage-refs-btn" data-att-id="' + attId + '" aria-haspopup="dialog" title="' +
+                sbaEscapeHtml(sba__('Show which pages use this file', 'Show which pages use this file')) + '">' +
+                '<span class="dashicons dashicons-admin-links" aria-hidden="true"></span>' + sbaEscapeHtml(label) + '</button>';
+            if (g.potential_count > 0) {
+                html += '<div class="sba-usage-refs-note">' + sbaEscapeHtml(sbaPlural(g.potential_count, sba__('potential page', 'potential page'), sba__('potential pages', 'potential pages'))) + '</div>';
+            }
+            html += '<div class="sba-usage-list">';
+            var shown = 0;
+            $.each(g.pages, function (_, p) {
+                if (shown >= 2) { return false; }
+                html += '<div class="sba-usage-tag sba-usage-tag-content" title="' + sbaEscapeHtml(p.title) + '">' +
+                    '<span class="dashicons dashicons-admin-post" aria-hidden="true"></span>' +
+                    '<span class="sba-usage-tag-text"><strong>' + sbaEscapeHtml(p.title) + '</strong>' +
+                    (p.post_type_label ? ' <span class="sba-usage-ptype">· ' + sbaEscapeHtml(p.post_type_label) + '</span>' : '') + '</span></div>';
+                shown++;
+            });
+            if (shown < 2) {
+                $.each(g.other, function (_, o) {
+                    if (shown >= 2) { return false; }
+                    html += '<div class="sba-usage-tag sba-usage-tag-theme"><span class="dashicons dashicons-admin-site-alt3" aria-hidden="true"></span>' +
+                        '<span class="sba-usage-tag-text"><strong>' + sbaEscapeHtml(o.label) + '</strong></span></div>';
+                    shown++;
+                });
+            }
+            var rest = g.page_count + g.other_count - shown;
+            if (rest > 0) {
+                html += '<div class="sba-usage-more">+ ' + rest + ' ' + sbaEscapeHtml(sba__('more', 'more')) + '</div>';
+            }
+            return html + '</div>';
+        }
+
+        function sbaMethodsHtml(methods) {
+            return '<ul class="sba-refs-methods">' + $.map(methods || [], function (m) {
+                var potential = m.confidence && m.confidence !== 'high';
+                return '<li class="' + (potential ? 'is-potential' : '') + '">' + sbaEscapeHtml(m.label) +
+                    (potential ? ' <span class="sba-refs-conf">(' + sbaEscapeHtml(sba__('potential', 'potential')) + ')</span>' : '') + '</li>';
+            }).join('') + '</ul>';
+        }
+
+        function sbaRefPageHtml(p) {
+            var viewUrl = sbaSafeHttpUrl(p.view_url);
+            var editUrl = sbaSafeHttpUrl(p.edit_url);
+            var statusHtml = '';
+            if (p.post_status && p.post_status !== 'publish') {
+                statusHtml = '<span class="sba-refs-status sba-refs-status-' + sbaEscapeHtml(p.post_status) + '">' + sbaEscapeHtml(p.status_label || p.post_status) + '</span>';
+            }
+            var urlHtml;
+            if (viewUrl) {
+                urlHtml = '<code class="sba-refs-url">' + sbaEscapeHtml(viewUrl) + '</code>';
+            } else if (p.fallback) {
+                urlHtml = '<span class="sba-refs-nourl">' + sbaEscapeHtml(sba__('Run the media scan again to load the page link.', 'Run the media scan again to load the page link.')) + '</span>';
+            } else if (p.post_status && p.post_status !== 'publish') {
+                urlHtml = '<span class="sba-refs-nourl">' + sbaEscapeHtml(sba__('Not publicly visible — no public page link.', 'Not publicly visible — no public page link.')) + '</span>';
+            } else {
+                urlHtml = '<span class="sba-refs-nourl">' + sbaEscapeHtml(sba__('This content type has no public page.', 'This content type has no public page.')) + '</span>';
+            }
+            var actions = '';
+            if (viewUrl) {
+                actions += '<a class="button button-small button-primary sba-refs-view" href="' + sbaEscapeHtml(viewUrl) + '" target="_blank" rel="noopener noreferrer">' +
+                    sbaEscapeHtml(sba__('View Page', 'View Page')) + ' <span aria-hidden="true">↗</span><span class="screen-reader-text"> ' + sbaEscapeHtml(sba__('(opens in a new tab)', '(opens in a new tab)')) + '</span></a>';
+            }
+            if (editUrl) {
+                actions += '<a class="button button-small sba-refs-edit" href="' + sbaEscapeHtml(editUrl) + '" target="_blank" rel="noopener noreferrer">' +
+                    sbaEscapeHtml(sba__('Edit', 'Edit')) + '<span class="screen-reader-text"> ' + sbaEscapeHtml(p.title) + ' ' + sbaEscapeHtml(sba__('(opens in a new tab)', '(opens in a new tab)')) + '</span></a>';
+            }
+            return '<li class="sba-refs-page">' +
+                '<div class="sba-refs-page-main">' +
+                '<div class="sba-refs-page-title"><strong>' + sbaEscapeHtml(p.title) + '</strong>' +
+                ' <span class="sba-refs-type">' + sbaEscapeHtml(p.post_type_label || '') + '</span>' + statusHtml +
+                ' <span class="sba-refs-id">#' + (parseInt(p.post_id, 10) || 0) + '</span></div>' +
+                urlHtml +
+                '<div class="sba-refs-methods-label">' + sbaEscapeHtml(sba__('Usage methods:', 'Usage methods:')) + '</div>' + sbaMethodsHtml(p.methods) +
+                '</div>' +
+                (actions ? '<div class="sba-refs-actions">' + actions + '</div>' : '') +
+                '</li>';
+        }
+
+        function sbaRenderRefsDialog(attId) {
+            var entry = sbaMediaRefStore[attId];
+            if (!entry) {
+                return false;
+            }
+            var g = entry.groups;
+            var heading = g.page_count === 1 ? sba__('1 Page Using This Image', '1 Page Using This Image') :
+                g.page_count + ' ' + sba__('Pages Using This Image', 'Pages Using This Image');
+            $('#sba-media-refs-heading').text(sba__('Where is this image used?', 'Where is this image used?'));
+
+            var html = '<div class="sba-refs-summary">' +
+                '<h3 class="sba-refs-count-heading" id="sba-media-refs-count">' + sbaEscapeHtml(heading) + '</h3>' +
+                '<div class="sba-refs-file"><span class="dashicons dashicons-format-image" aria-hidden="true"></span> ' + sbaEscapeHtml(entry.name) + '</div>' +
+                '<div class="sba-refs-counts">' +
+                '<span><strong>' + g.page_count + '</strong> ' + sbaEscapeHtml(g.page_count === 1 ? sba__('unique page', 'unique page') : sba__('unique pages', 'unique pages')) + '</span>' +
+                '<span><strong>' + g.confirmed_count + '</strong> ' + sbaEscapeHtml(sba__('confirmed', 'confirmed')) + '</span>' +
+                '<span><strong>' + g.potential_count + '</strong> ' + sbaEscapeHtml(sba__('potential', 'potential')) + '</span>' +
+                '<span>' + sbaEscapeHtml(sba__('Other Usage Locations:', 'Other Usage Locations:')) + ' <strong>' + g.other_count + '</strong></span>' +
+                '</div>' +
+                '<div class="sba-refs-matches">' + sbaEscapeHtml(sbaPlural(g.match_count, sba__('detection match', 'detection match'), sba__('detection matches', 'detection matches'))) + ' ' +
+                sbaEscapeHtml(sba__('grouped by page.', 'grouped by page.')) + '</div>' +
+                '</div>';
+
+            var confirmed = $.grep(g.pages, function (p) { return p.confirmed; });
+            var potential = $.grep(g.pages, function (p) { return !p.confirmed; });
+            if (confirmed.length) {
+                html += '<h4 class="sba-refs-section">' + sbaEscapeHtml(sba__('Confirmed Page References', 'Confirmed Page References')) + ' <span class="sba-refs-badge">' + confirmed.length + '</span></h4>' +
+                    '<ul class="sba-refs-list">' + $.map(confirmed, sbaRefPageHtml).join('') + '</ul>';
+            }
+            if (potential.length) {
+                html += '<h4 class="sba-refs-section">' + sbaEscapeHtml(sba__('Potential Page References', 'Potential Page References')) + ' <span class="sba-refs-badge sba-refs-badge-potential">' + potential.length + '</span></h4>' +
+                    '<p class="sba-refs-help">' + sbaEscapeHtml(sba__('Found only by lower-confidence methods (file name match, attachment parent). Verify on the page.', 'Found only by lower-confidence methods (file name match, attachment parent). Verify on the page.')) + '</p>' +
+                    '<ul class="sba-refs-list">' + $.map(potential, sbaRefPageHtml).join('') + '</ul>';
+            }
+            if (!g.pages.length) {
+                html += '<p class="sba-refs-help">' + sbaEscapeHtml(sba__('No page uses this file directly.', 'No page uses this file directly.')) + '</p>';
+            }
+            if (g.other.length) {
+                html += '<h4 class="sba-refs-section">' + sbaEscapeHtml(sba__('Other Usage Locations', 'Other Usage Locations')) + ' <span class="sba-refs-badge sba-refs-badge-other">' + g.other.length + '</span></h4>' +
+                    '<p class="sba-refs-help">' + sbaEscapeHtml(sba__('Global or non-page references (site settings, widgets, options). These have no page link and are not counted as pages.', 'Global or non-page references (site settings, widgets, options). These have no page link and are not counted as pages.')) + '</p>' +
+                    '<ul class="sba-refs-list">' + $.map(g.other, function (o) {
+                        var scope = o.scope === 'missing' ? sba__('Missing content', 'Missing content') : sba__('Global', 'Global');
+                        return '<li class="sba-refs-other"><div class="sba-refs-page-main"><div class="sba-refs-page-title"><strong>' + sbaEscapeHtml(o.label) + '</strong>' +
+                            ' <span class="sba-refs-type">' + sbaEscapeHtml(scope) + '</span>' +
+                            (o.confidence && o.confidence !== 'high' ? ' <span class="sba-refs-conf">(' + sbaEscapeHtml(sba__('potential', 'potential')) + ')</span>' : '') + '</div>' +
+                            (o.title ? '<div class="sba-refs-detail">' + sbaEscapeHtml(o.title) + '</div>' : '') +
+                            (o.evidence ? '<div class="sba-refs-evidence">' + sbaEscapeHtml(o.evidence) + '</div>' : '') +
+                            '</div></li>';
+                    }).join('') + '</ul>';
+            }
+            $('#sba-media-refs-body').html(html).scrollTop(0);
+            return true;
+        }
+
+        function closeMediaRefsModal() {
+            var $modal = $('#sba-media-refs-modal');
+            if ($modal.is(':visible')) {
+                $modal.fadeOut(150);
+                // Return focus to the trigger; the table may have been re-rendered meanwhile,
+                // so fall back to the current button for the same attachment.
+                var trigger = sbaMediaRefTrigger;
+                if (trigger && !document.body.contains(trigger)) {
+                    var trigId = parseInt($(trigger).attr('data-att-id'), 10) || 0;
+                    trigger = $('.sba-usage-refs-btn[data-att-id="' + trigId + '"], .sba-refs-badge-btn[data-att-id="' + trigId + '"]').filter(':visible').get(0) || null;
+                }
+                if (trigger) {
+                    $(trigger).attr('aria-expanded', 'false').trigger('focus');
+                }
+                sbaMediaRefTrigger = null;
+            }
+        }
+
+        $(document).on('click', '.sba-usage-refs-btn, .sba-refs-badge-btn', function (e) {
+            e.preventDefault();
+            if (!sbaRenderRefsDialog(parseInt($(this).attr('data-att-id'), 10))) {
+                return;
+            }
+            sbaMediaRefTrigger = this;
+            $(this).attr('aria-expanded', 'true');
+            var $modal = $('#sba-media-refs-modal');
+            $modal.fadeIn(150, function () {
+                $modal.find('.sba-modal-close').first().focus();
+            });
+        });
+        $(document).on('click', '.sba-media-refs-close', function (e) {
+            e.preventDefault();
+            closeMediaRefsModal();
+        });
+        $('#sba-media-refs-modal').on('click', function (e) {
+            if ($(e.target).is('#sba-media-refs-modal')) {
+                closeMediaRefsModal();
+            }
+        });
+        $(document).on('keydown', function (e) {
+            var $m = $('#sba-media-refs-modal');
+            if (!$m.is(':visible')) {
+                return;
+            }
+            if (e.key === 'Escape' || e.keyCode === 27) {
+                e.preventDefault();
+                closeMediaRefsModal();
+                return;
+            }
+            if (e.key === 'Tab' || e.keyCode === 9) {
+                var f = $m.find('button, [href]').filter(':visible');
+                if (!f.length) { return; }
+                if (e.shiftKey && document.activeElement === f[0]) {
+                    e.preventDefault();
+                    f[f.length - 1].focus();
+                } else if (!e.shiftKey && document.activeElement === f[f.length - 1]) {
+                    e.preventDefault();
+                    f[0].focus();
+                }
+            }
+        });
+
         // Number formatter
         function formatNumber(num) {
             return (num || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -2048,49 +2328,11 @@
                 if (isItemQuarantined) {
                     usageHtml = '<span class="sba-usage-tag sba-usage-tag-quarantined"><span class="dashicons dashicons-shield"></span> ' + sba__('In Quarantine Trash', 'In Quarantine Trash') + '</span>';
                 } else if (item.usage_places && item.usage_places.length > 0) {
-                    var placesCount = item.usage_places.length;
-                    usageHtml = '<div style="font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">' +
-                        sba__('Used in ', 'Used in ') + placesCount + ' ' + (placesCount === 1 ? sba__('location:', 'location:') : sba__('locations:', 'locations:')) +
-                        '</div><div class="sba-usage-list">';
-
-                    var maxShow = Math.min(placesCount, 3);
-                    for (var pi = 0; pi < maxShow; pi++) {
-                        var place = item.usage_places[pi];
-                        var pTitle = sbaEscapeHtml(place.title || sba__('Untitled Post', 'Untitled Post'));
-                        var pType = place.type || 'Content';
-
-                        var tagClass = 'sba-usage-tag-content';
-                        var iconClass = 'dashicons-admin-post';
-                        var typeLabel = '';
-
-                        if (pType === 'Featured') {
-                            tagClass = 'sba-usage-tag-featured';
-                            iconClass = 'dashicons-star-filled';
-                            typeLabel = ' (' + sba__('Featured', 'Featured') + ')';
-                        } else if (pType === 'Product Gallery') {
-                            tagClass = 'sba-usage-tag-product';
-                            iconClass = 'dashicons-cart';
-                            typeLabel = ' (' + sba__('Gallery', 'Gallery') + ')';
-                        } else if (pType === 'Logo' || pType === 'Site Icon') {
-                            tagClass = 'sba-usage-tag-theme';
-                            iconClass = 'dashicons-admin-appearance';
-                            typeLabel = ' (' + sbaEscapeHtml(pType) + ')';
-                        } else if (pType === 'Attached Parent') {
-                            tagClass = 'sba-usage-tag-content';
-                            iconClass = 'dashicons-paperclip';
-                            typeLabel = ' (' + sba__('Attached', 'Attached') + ')';
-                        }
-
-                        usageHtml += '<div class="sba-usage-tag ' + tagClass + '" title="' + pTitle + '">' +
-                            '<span class="dashicons ' + iconClass + '"></span>' +
-                            '<span><strong>' + pTitle + '</strong>' + typeLabel + '</span>' +
-                            '</div>';
-                    }
-
-                    if (placesCount > 3) {
-                        usageHtml += '<div class="sba-usage-more">+ ' + (placesCount - 3) + ' ' + sba__('more locations', 'more locations') + '</div>';
-                    }
-                    usageHtml += '</div>';
+                    // Detected references grouped per content item (one entry per page, however
+                    // many detection methods matched it). The summary opens the references dialog.
+                    var refGroups = sbaUsageGroupsFor(item);
+                    sbaMediaRefStore[safeId] = { name: item.title || item.name || '', groups: refGroups };
+                    usageHtml = sbaUsageSummaryHtml(safeId, refGroups);
                 } else {
                     usageHtml = '<span class="sba-usage-tag sba-usage-tag-unused"><span class="dashicons dashicons-no-alt"></span> ' + sba__('0 References (Unlinked)', '0 References (Unlinked)') + '</span>';
                 }
@@ -4798,9 +5040,21 @@
                     var previewHtml = safePreview ? '<img src="' + safePreview + '" class="sba-media-thumb" alt="' + safeName + '" />' : '<div class="sba-media-thumb-placeholder"><span class="dashicons dashicons-format-image"></span></div>';
                     var pathHtml = '<div class="sba-table-source sba-media-file-path" title="' + sba__('Relative path in uploads directory', 'Relative path in uploads directory') + '"><span class="dashicons dashicons-media-document" style="font-size: 13px; width: 13px; height: 13px; vertical-align: text-bottom; margin-right: 4px; color: #64748b;"></span><code>' + safePath + '</code></div>';
 
-                    var usageHtml = isUsed ?
-                        '<span class="sba-usage-tag sba-usage-tag-content"><span class="dashicons dashicons-yes"></span> ' + (item.usage_count || 1) + ' Reference(s)</span>' :
-                        '<span class="sba-usage-tag sba-usage-tag-unused"><span class="dashicons dashicons-no-alt"></span> 0 References (Review Required)</span>';
+                    // Referenced copies: the badge is a real button that opens the references dialog
+                    // (delegated handler, so it survives re-rendering). Same grouping as All Media.
+                    var usageHtml;
+                    var dupRefGroups = isUsed ? sbaDuplicateUsageGroups(item) : null;
+                    if (dupRefGroups && (dupRefGroups.page_count + dupRefGroups.other_count) > 0) {
+                        sbaMediaRefStore[safeId] = { name: item.title || item.name || '', groups: dupRefGroups };
+                        usageHtml = '<button type="button" class="sba-usage-tag sba-usage-tag-content sba-refs-badge-btn" data-att-id="' + safeId + '" aria-haspopup="dialog" title="' +
+                            sbaEscapeHtml(sba__('Show which pages use this file', 'Show which pages use this file')) + '">' +
+                            '<span class="dashicons dashicons-yes" aria-hidden="true"></span> ' + (item.usage_count || 1) + ' Reference(s)' +
+                            '<span class="screen-reader-text"> — ' + sbaEscapeHtml(sba__('show where this image is used', 'show where this image is used')) + '</span></button>';
+                    } else if (isUsed) {
+                        usageHtml = '<span class="sba-usage-tag sba-usage-tag-content"><span class="dashicons dashicons-yes"></span> ' + (item.usage_count || 1) + ' Reference(s)</span>';
+                    } else {
+                        usageHtml = '<span class="sba-usage-tag sba-usage-tag-unused"><span class="dashicons dashicons-no-alt"></span> 0 References (Review Required)</span>';
+                    }
 
                     var actionHtml = '<div style="display: flex; gap: 6px; justify-content: flex-end;">' +
                         (isUsed ? '' : '<button type="button" class="button button-small sba-btn-quarantine-item" data-id="' + safeId + '" data-name="' + safeName + '"><span class="dashicons dashicons-shield"></span> Move to Quarantine</button>') +

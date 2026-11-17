@@ -3254,6 +3254,227 @@ function sba_get_attachment_edit_url( $attachment_id ) {
 }
 
 /**
+ * Display/link metadata for one Usage Context location (presentation only).
+ *
+ * Resolves the referencing post's type label and its WordPress-generated edit URL.
+ * The edit URL is empty when the source is not a post (site icon, logo, widget,
+ * option: source ID 0), when the post no longer exists, when its post type has no
+ * admin UI, or when the current user cannot edit that post — get_edit_post_link()
+ * performs the `edit_post` capability check. Results are cached per request.
+ *
+ * @param int $post_id Referencing post ID (0 for non-post sources).
+ * @return array{post_type:string,post_type_label:string,edit_url:string}
+ */
+function sba_usage_place_link_data( $post_id ) {
+    static $cache = [];
+
+    $post_id = (int) $post_id;
+    $empty   = [ 'post_type' => '', 'post_type_label' => '', 'edit_url' => '' ];
+    if ( $post_id <= 0 ) {
+        return $empty;
+    }
+    if ( isset( $cache[ $post_id ] ) ) {
+        return $cache[ $post_id ];
+    }
+
+    $post = get_post( $post_id );
+    if ( ! $post ) {
+        $cache[ $post_id ] = $empty;
+        return $empty;
+    }
+
+    $type_obj = get_post_type_object( $post->post_type );
+    $label    = ( $type_obj && ! empty( $type_obj->labels->singular_name ) ) ? $type_obj->labels->singular_name : $post->post_type;
+    $edit_url = get_edit_post_link( $post_id, 'raw' );
+
+    $cache[ $post_id ] = [
+        'post_type'       => sanitize_key( $post->post_type ),
+        'post_type_label' => sanitize_text_field( $label ),
+        'edit_url'        => $edit_url ? esc_url_raw( $edit_url ) : '',
+    ];
+    return $cache[ $post_id ];
+}
+
+/**
+ * Human-readable label for a reference's detection method (presentation only).
+ *
+ * Maps the usage detector's method keys and the Universal Image Reference Index's
+ * descriptive method strings onto one vocabulary, so the same kind of usage found by
+ * both engines is listed once. Index matches without a more specific kind are
+ * "General Scan".
+ *
+ * @param string $method     Raw detection_method.
+ * @param string $usage_type Raw usage_type.
+ * @return string
+ */
+function sba_usage_method_label( $method, $usage_type = '' ) {
+    $method = (string) $method;
+    $keys   = [
+        'meta_thumbnail_id'      => __( 'Featured Image', 'site-bloat-auditor' ),
+        'meta_product_gallery'   => __( 'Product Gallery', 'site-bloat-auditor' ),
+        'gutenberg_block'        => __( 'Gutenberg Block', 'site-bloat-auditor' ),
+        'content_wp_image_class' => __( 'Post Content', 'site-bloat-auditor' ),
+        'content_filename_match' => __( 'Post Content (file name match)', 'site-bloat-auditor' ),
+        'elementor_json_data'    => __( 'Elementor', 'site-bloat-auditor' ),
+        'widget_settings'        => __( 'Widget', 'site-bloat-auditor' ),
+        'option_site_icon'       => __( 'Site Icon', 'site-bloat-auditor' ),
+        'theme_mod_custom_logo'  => __( 'Site Logo', 'site-bloat-auditor' ),
+        'attached_parent'        => __( 'Attached to (uploaded to this content)', 'site-bloat-auditor' ),
+    ];
+    if ( isset( $keys[ $method ] ) ) {
+        return $keys[ $method ];
+    }
+    if ( 0 === strpos( $method, 'postmeta_' ) ) {
+        return __( 'Custom Field', 'site-bloat-auditor' );
+    }
+
+    // Universal Image Reference Index (descriptive strings).
+    $patterns = [
+        '/elementor/i'                  => __( 'Elementor', 'site-bloat-auditor' ),
+        '/wpbakery|vc_/i'               => __( 'WPBakery', 'site-bloat-auditor' ),
+        '/gutenberg/i'                  => __( 'Gutenberg Block', 'site-bloat-auditor' ),
+        '/acf|custom field/i'           => __( 'Custom Field', 'site-bloat-auditor' ),
+        '/rendered shortcode/i'         => __( 'Rendered Shortcode', 'site-bloat-auditor' ),
+        '/theme option|widget setting/i' => __( 'Theme Option / Widget Setting', 'site-bloat-auditor' ),
+    ];
+    foreach ( $patterns as $re => $label ) {
+        if ( preg_match( $re, $method ) ) {
+            return $label;
+        }
+    }
+    if ( 'Featured' === $usage_type ) {
+        return __( 'Featured Image', 'site-bloat-auditor' );
+    }
+    return __( 'General Scan', 'site-bloat-auditor' );
+}
+
+/**
+ * Group one attachment's detected references by the content that uses it (presentation only).
+ *
+ * The underlying references (and therefore classification, counts used elsewhere and
+ * `usage_places`) are not changed. Each referencing post appears once, with the
+ * de-duplicated list of usage methods. References without a post (site icon, logo,
+ * widgets, options) are kept in a separate "other" list and never counted as pages.
+ * A page is "confirmed" when at least one of its methods is high confidence, otherwise
+ * "potential". A frontend URL is given only for published content of a publicly
+ * viewable post type; drafts, private, pending, scheduled and trashed content and
+ * non-viewable types get none. The edit URL comes from get_edit_post_link() (empty
+ * when the current user cannot edit the post).
+ *
+ * @param array $references References from SBA_Usage_Detector::scan_references().
+ * @return array{pages:array,other:array,page_count:int,confirmed_count:int,potential_count:int,other_count:int,match_count:int}
+ */
+function sba_group_usage_references( array $references ) {
+    $pages = [];
+    $other = [];
+    $rank  = [ 'high' => 3, 'medium' => 2, 'low' => 1 ];
+
+    foreach ( $references as $ref ) {
+        $source_id  = (int) ( $ref['source_id'] ?? 0 );
+        $confidence = sanitize_key( $ref['confidence'] ?? 'medium' );
+        $label      = sba_usage_method_label( $ref['detection_method'] ?? '', $ref['usage_type'] ?? '' );
+        $post       = $source_id > 0 ? get_post( $source_id ) : null;
+
+        if ( ! $post ) {
+            $title = (string) ( $ref['source_title'] ?? '' );
+            if ( $source_id > 0 ) {
+                $label = sprintf( __( '%1$s (content #%2$d no longer exists)', 'site-bloat-auditor' ), $label, $source_id );
+            }
+            $key = strtolower( $label . '|' . $title );
+            if ( ! isset( $other[ $key ] ) ) {
+                $other[ $key ] = [
+                    'label'      => sanitize_text_field( $label ),
+                    'title'      => sanitize_text_field( $title ),
+                    'scope'      => $source_id > 0 ? 'missing' : 'global',
+                    'confidence' => $confidence,
+                    'evidence'   => sanitize_text_field( (string) ( $ref['evidence'] ?? '' ) ),
+                ];
+            } elseif ( ( $rank[ $confidence ] ?? 0 ) > ( $rank[ $other[ $key ]['confidence'] ] ?? 0 ) ) {
+                $other[ $key ]['confidence'] = $confidence;
+            }
+            continue;
+        }
+
+        if ( ! isset( $pages[ $source_id ] ) ) {
+            $type_obj   = get_post_type_object( $post->post_type );
+            $type_label = ( $type_obj && ! empty( $type_obj->labels->singular_name ) ) ? $type_obj->labels->singular_name : $post->post_type;
+            $status     = get_post_status( $post );
+            $view_url   = '';
+            if ( 'publish' === $status && is_post_type_viewable( $post->post_type ) ) {
+                $permalink = get_permalink( $post );
+                $view_url  = $permalink ? esc_url_raw( $permalink ) : '';
+            }
+            $status_obj = get_post_status_object( $status );
+            $edit_url   = get_edit_post_link( $post->ID, 'raw' );
+            // Raw title: the status is shown separately (get_the_title() prefixes "Private:").
+            $title      = trim( wp_strip_all_tags( (string) $post->post_title ) );
+
+            $pages[ $source_id ] = [
+                'post_id'         => (int) $post->ID,
+                'title'           => sanitize_text_field( '' !== $title ? $title : sprintf( __( '(no title) #%d', 'site-bloat-auditor' ), $post->ID ) ),
+                'post_type'       => sanitize_key( $post->post_type ),
+                'post_type_label' => sanitize_text_field( $type_label ),
+                'post_status'     => sanitize_key( $status ),
+                'status_label'    => sanitize_text_field( $status_obj && ! empty( $status_obj->label ) ? $status_obj->label : $status ),
+                'is_public'       => '' !== $view_url,
+                'viewable_type'   => (bool) is_post_type_viewable( $post->post_type ),
+                'view_url'        => $view_url,
+                'edit_url'        => $edit_url ? esc_url_raw( $edit_url ) : '',
+                'confidence'      => $confidence,
+                'methods'         => [],
+                'match_count'     => 0,
+            ];
+        }
+
+        $page = &$pages[ $source_id ];
+        $page['match_count']++;
+        if ( ( $rank[ $confidence ] ?? 0 ) > ( $rank[ $page['confidence'] ] ?? 0 ) ) {
+            $page['confidence'] = $confidence;
+        }
+        if ( ! isset( $page['methods'][ $label ] ) ) {
+            $page['methods'][ $label ] = [ 'label' => sanitize_text_field( $label ), 'confidence' => $confidence ];
+        } elseif ( ( $rank[ $confidence ] ?? 0 ) > ( $rank[ $page['methods'][ $label ]['confidence'] ] ?? 0 ) ) {
+            $page['methods'][ $label ]['confidence'] = $confidence;
+        }
+        unset( $page );
+    }
+
+    $confirmed = 0;
+    foreach ( $pages as &$page ) {
+        $page['methods']   = array_values( $page['methods'] );
+        $page['confirmed'] = ( 'high' === $page['confidence'] );
+        if ( $page['confirmed'] ) {
+            $confirmed++;
+        }
+    }
+    unset( $page );
+
+    // Confirmed first, then published, then title.
+    uasort(
+        $pages,
+        static function ( $a, $b ) {
+            if ( $a['confirmed'] !== $b['confirmed'] ) {
+                return $a['confirmed'] ? -1 : 1;
+            }
+            if ( $a['is_public'] !== $b['is_public'] ) {
+                return $a['is_public'] ? -1 : 1;
+            }
+            return strcasecmp( $a['title'], $b['title'] );
+        }
+    );
+
+    return [
+        'pages'           => array_values( $pages ),
+        'other'           => array_values( $other ),
+        'page_count'      => count( $pages ),
+        'confirmed_count' => $confirmed,
+        'potential_count' => count( $pages ) - $confirmed,
+        'other_count'     => count( $other ),
+        'match_count'     => count( $references ),
+    ];
+}
+
+/**
  * 11. Media Files Audit AJAX Action: Scan, analyze usage, and compute reclaimable storage.
  */
 add_action( 'wp_ajax_sba_scan_media_files', 'sba_ajax_scan_media_files' );
@@ -3392,6 +3613,7 @@ function sba_ajax_scan_media_files() {
 
         $usage_data     = $usage_results[ $att_id ] ?? null;
         $usage_places   = [];
+        $usage_groups   = null;
         $classification = 'no_references_found';
         $category_label = esc_html__( 'No References Found (Review Required)', 'site-bloat-auditor' );
         $badge_class    = 'sba-pill-orphaned';
@@ -3403,15 +3625,20 @@ function sba_ajax_scan_media_files() {
             $badge_class    = $usage_data['badge_class'];
 
             foreach ( $usage_data['references'] as $ref ) {
-                $usage_places[] = [
-                    'title'       => $ref['source_title'],
-                    'type'        => $ref['usage_type'],
-                    'post_id'     => $ref['source_id'],
-                    'confidence'  => $ref['confidence'],
-                    'post_status' => $ref['post_status'] ?? 'publish',
-                    'evidence'    => $ref['evidence'],
-                ];
+                $usage_places[] = array_merge(
+                    [
+                        'title'       => $ref['source_title'],
+                        'type'        => $ref['usage_type'],
+                        'post_id'     => $ref['source_id'],
+                        'confidence'  => $ref['confidence'],
+                        'post_status' => $ref['post_status'] ?? 'publish',
+                        'evidence'    => $ref['evidence'],
+                    ],
+                    sba_usage_place_link_data( (int) $ref['source_id'] )
+                );
             }
+            // Same references grouped per page (display only; usage_places stays as detected).
+            $usage_groups = sba_group_usage_references( (array) $usage_data['references'] );
         }
 
         $is_used = ( 'no_references_found' !== $classification && ! empty( $usage_places ) );
@@ -3603,6 +3830,7 @@ function sba_ajax_scan_media_files() {
             'upload_date'                 => $inv_item['upload_date'],
             'mime_type'                   => sanitize_text_field( $att_post->post_mime_type ),
             'usage_places'                => $usage_places,
+            'usage_groups'                => $usage_groups,
             'recommendation_badge'        => $badge_text,
             'badge_class'                 => $badge_class,
             'edit_url'                    => sba_get_attachment_edit_url( $att_id ),

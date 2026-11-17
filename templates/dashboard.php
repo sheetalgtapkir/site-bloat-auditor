@@ -1439,6 +1439,23 @@ $sba_last_db_scan              = get_option( 'sba_last_db_scan', [] );
     </div>
 </div>
 
+<!-- Modal: Media References — which content uses an attachment (filled by admin.js) -->
+<div id="sba-media-refs-modal" class="sba-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="sba-media-refs-heading">
+    <div class="sba-modal-dialog sba-modal-dialog-large sba-media-refs-dialog">
+        <div class="sba-modal-header">
+            <div class="sba-modal-title">
+                <span class="dashicons dashicons-admin-links sba-modal-icon-info" aria-hidden="true"></span>
+                <span id="sba-media-refs-heading"><?php esc_html_e( 'Resource References', 'site-bloat-auditor' ); ?></span>
+            </div>
+            <button type="button" class="sba-modal-close sba-media-refs-close" aria-label="<?php esc_attr_e( 'Close dialog', 'site-bloat-auditor' ); ?>">&times;</button>
+        </div>
+        <div class="sba-modal-body sba-media-refs-body" id="sba-media-refs-body"></div>
+        <div class="sba-modal-footer">
+            <button type="button" class="button button-large sba-media-refs-close"><?php esc_html_e( 'Close', 'site-bloat-auditor' ); ?></button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Plugin Usage Evidence & Inspection Panel -->
 <div id="sba-plugin-evidence-modal" class="sba-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="sba-plugin-evidence-title">
     <div class="sba-modal-dialog sba-modal-dialog-large" style="max-width: 680px; width: 92%;">
