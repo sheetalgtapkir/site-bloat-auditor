@@ -1,0 +1,171 @@
+{
+    "success": true,
+    "data": {
+        "database_size_bytes": "<masked>",
+        "database_size_fmt": "<masked>",
+        "recoverable_bytes": "<masked>",
+        "recoverable_fmt": "<masked>",
+        "eligible_items_count": "<masked>",
+        "scanned_at_fmt": "<masked>",
+        "scan_status": "complete",
+        "transients_bytes": "<masked>",
+        "transients_fmt": "<masked>",
+        "orphaned_bytes": "<masked>",
+        "orphaned_fmt": "<masked>",
+        "autoload_size_kb": "<masked>",
+        "autoload_count": "<masked>",
+        "revisions_count": "<masked>",
+        "revisions_bytes": "<masked>",
+        "revisions_size_kb": "<masked>",
+        "revisions_releasable_bytes": "<masked>",
+        "revisions_releasable_kb": "<masked>",
+        "revisions_cleanable_count": "<masked>",
+        "revisions_cleanable_bytes": "<masked>",
+        "revisions_cleanable_kb": "<masked>",
+        "transients_count": "<masked>",
+        "total_tables": "<masked>",
+        "core_count": "<masked>",
+        "active_plugin_count": "<masked>",
+        "orphaned_count": "<masked>",
+        "tables": [
+            {
+                "name": "wp_commentmeta",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_comments",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_links",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_options",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_postmeta",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_posts",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_term_relationships",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_term_taxonomy",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_termmeta",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_terms",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_usermeta",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            },
+            {
+                "name": "wp_users",
+                "size_kb": "<masked>",
+                "size_bytes": "<masked>",
+                "row_count": "<masked>",
+                "status": "core",
+                "source": "WordPress Core",
+                "likely_plugin": "WordPress Core",
+                "plugin_state": "core"
+            }
+        ],
+        "plugins": [
+            {
+                "name": "Site Bloat & Storage Auditor",
+                "version": "1.1.0",
+                "author": "sheetal2311",
+                "plugin_file": "site-bloat-auditor/site-bloat-auditor.php",
+                "slug": "site-bloat-auditor",
+                "status": "active",
+                "size_mb": "<masked>",
+                "reason": "Systemic utility / infrastructure plugin"
+            }
+        ],
+        "plugins_total": "<masked>",
+        "plugins_active_count": "<masked>",
+        "plugins_inactive_count": "<masked>",
+        "plugins_unused_count": "<masked>",
+        "plugins_inactive_size_mb": "<masked>",
+        "plugins_total_size_mb": "<masked>"
+    }
+}

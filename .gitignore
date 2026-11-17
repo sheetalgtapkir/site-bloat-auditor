@@ -1,2 +1,56 @@
 Site-Bloat-Auditor-Backups/
 *.zip
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Database dumps and backups
+*.sql
+*.sql.gz
+*.sqlite
+*.db
+*.bak
+*.backup
+backups/
+backup/
+*-backup/
+*-backups/
+wp-content/backup*/
+wp-content/updraft/
+wp-content/ai1wm-backups/
+
+# Archives
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# Logs
+*.log
+logs/
+debug.log
+
+# Dependencies
+node_modules/
+
+# Local scratch work (not part of the plugin)
+/scratch/
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Editor / IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.tmp
+.*.sw?

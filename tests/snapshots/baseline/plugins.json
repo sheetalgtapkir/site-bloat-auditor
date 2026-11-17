@@ -1,0 +1,94 @@
+{
+    "success": true,
+    "data": {
+        "total_count": 1,
+        "active_count": 1,
+        "inactive_count": 0,
+        "usage_detected_count": 0,
+        "active_no_usage_count": 0,
+        "usage_unknown_count": 1,
+        "inactive_no_usage_count": 0,
+        "unverified_count": 0,
+        "verified_count": 0,
+        "outdated_count": "<masked>",
+        "high_risk_count": 0,
+        "medium_risk_count": 0,
+        "low_risk_count": 0,
+        "dependencies_count": 0,
+        "total_risks_count": 0,
+        "total_size_mb": "<masked>",
+        "total_size_bytes": "<masked>",
+        "total_size_formatted": "<masked>",
+        "inactive_size_mb": "<masked>",
+        "plugins": [
+            {
+                "plugin_file": "site-bloat-auditor/site-bloat-auditor.php",
+                "slug": "site-bloat-auditor",
+                "name": "Site Bloat & Storage Auditor",
+                "version": "1.1.0",
+                "author": "sheetal2311",
+                "author_uri": "https://profiles.wordpress.org/sheetal2311/",
+                "plugin_uri": "https://github.com/sheetalgtapkir/site-bloat-auditor",
+                "description": "Audit orphaned database tables, unused media, and plugin storage bloat with safe backups and quarantine isolation.",
+                "is_active": true,
+                "is_self": true,
+                "is_deletable": false,
+                "protect_reason": "Site Bloat & Storage Auditor (this active plugin) cannot be deleted or deactivated from itself.",
+                "usage_status": "usage_unknown",
+                "usage_label": "Usage Unknown / Incomplete Scan",
+                "usage_confidence": "high",
+                "usage_evidence": [
+                    "Active Site Bloat & Storage Auditor plugin executing."
+                ],
+                "evidence_functional": [],
+                "evidence_operational": [
+                    "Active Site Bloat & Storage Auditor plugin executing admin dashboard and storage analysis."
+                ],
+                "evidence_config": [],
+                "evidence_db": [],
+                "evidence_historical": [],
+                "db_tables_warning": "",
+                "checks_performed": [
+                    "Administrative tool inspection",
+                    "Self-auditor protection check"
+                ],
+                "evidence_found": [
+                    "Active Site Bloat & Storage Auditor plugin executing in WordPress admin."
+                ],
+                "evidence_not_found": [
+                    "No public frontend shortcodes or blocks registered (administrative tool)."
+                ],
+                "scan_limitations": "Administrative audit tools operate exclusively within the WordPress admin dashboard and on-demand AJAX handlers. They do not render public frontend content.",
+                "recommended_action": "This plugin provides the current audit interface and storage clinic. It cannot be deactivated or deleted from itself.",
+                "archetype": {
+                    "category": "Administration & Developer Tooling",
+                    "explanation": "Administrative audit utility running in WordPress admin."
+                },
+                "dependency_issue": false,
+                "dependency_parent": "",
+                "size_bytes": "<masked>",
+                "size_mb": "<masked>",
+                "size_formatted": "<masked>",
+                "db_tables_count": 0,
+                "db_tables_size": "<masked>",
+                "db_tables_size_bytes": "<masked>",
+                "repo_status": "development",
+                "repo_status_label": "Local Plugin (This Auditor)",
+                "repo_url": "",
+                "tested_wp": "",
+                "last_updated": "<masked>",
+                "last_updated_date": "<masked>",
+                "is_outdated": "<masked>",
+                "active_installs": 0,
+                "classification": "self",
+                "classification_label": "Local Plugin (This Auditor)",
+                "risk_level": "Local Active",
+                "risk_explanation": "Active site bloat auditor and storage maintenance clinic.",
+                "risk_note": "Active site bloat auditor and storage maintenance clinic.",
+                "theme_name": "",
+                "is_theme_required": false,
+                "is_theme_bundled": false
+            }
+        ]
+    }
+}
